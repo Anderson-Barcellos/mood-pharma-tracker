@@ -169,7 +169,7 @@ Return ONLY valid JSON, no markdown or additional text.`;
     const sortedTests = [...(cognitiveTests || [])].sort((a, b) => a.timestamp - b.timestamp);
     
     return sortedTests.map(test => ({
-      timestamp: format(test.timestamp, 'MMM d'),
+      timestamp: format(test.timestamp, 'HH:mm'),
       time: test.timestamp,
       score: test.totalScore,
       accuracy: test.accuracy * 100,
@@ -285,7 +285,7 @@ Return ONLY valid JSON, no markdown or additional text.`;
                   <Tooltip 
                     labelFormatter={(label, payload) => {
                       if (payload && payload.length > 0) {
-                        return format(payload[0].payload.time, 'MMM d, yyyy h:mm a');
+                        return format(payload[0].payload.time, 'MMM d, HH:mm');
                       }
                       return label;
                     }}

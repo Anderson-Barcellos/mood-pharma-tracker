@@ -148,7 +148,7 @@ export default function MoodView() {
       .sort((a, b) => a.timestamp - b.timestamp);
 
     return filteredEntries.map(entry => ({
-      timestamp: format(entry.timestamp, 'MMM d'),
+      timestamp: format(entry.timestamp, 'HH:mm'),
       time: entry.timestamp,
       mood: entry.moodScore,
       anxiety: entry.anxietyLevel,
@@ -361,7 +361,7 @@ export default function MoodView() {
                   <Tooltip 
                     labelFormatter={(label, payload) => {
                       if (payload && payload.length > 0) {
-                        return format(payload[0].payload.time, 'MMM d, yyyy h:mm a');
+                        return format(payload[0].payload.time, 'MMM d, HH:mm');
                       }
                       return label;
                     }}

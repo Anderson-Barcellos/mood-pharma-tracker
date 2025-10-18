@@ -211,13 +211,13 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-[400px] w-full">
+              <div className="h-[300px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                     <XAxis 
                       dataKey="time" 
-                      tickFormatter={(time) => format(time, 'MMM d')}
+                      tickFormatter={(time) => format(time, 'HH:mm')}
                       tick={{ fontSize: 11 }}
                     />
                     <YAxis 
@@ -235,7 +235,7 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
                       tickFormatter={(value) => value.toFixed(1)}
                     />
                     <Tooltip 
-                      labelFormatter={(time) => format(time, 'MMM d, h:mm a')}
+                      labelFormatter={(time) => format(time, 'MMM d, HH:mm')}
                       formatter={(value: any, name: string) => {
                         if (name === 'Concentration') return [value.toFixed(2) + ' ng/mL', name];
                         if (name === 'Mood') return [value.toFixed(1) + '/10', name];
@@ -282,13 +282,13 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-[400px] w-full">
+              <div className="h-[300px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                     <XAxis 
                       dataKey="time" 
-                      tickFormatter={(time) => format(time, 'MMM d')}
+                      tickFormatter={(time) => format(time, 'HH:mm')}
                       tick={{ fontSize: 11 }}
                     />
                     <YAxis 
@@ -306,10 +306,8 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
                       tickFormatter={(value) => value.toFixed(1)}
                     />
                     <Tooltip 
-                      labelFormatter={(time) => format(time, 'MMM d, h:mm a')}
+                      labelFormatter={(time) => format(time, 'MMM d, HH:mm')}
                       formatter={(value: any, name: string) => {
-                        if (name === 'Concentration') return [value.toFixed(2) + ' ng/mL', name];
-                        if (name === 'Cognitive Score') return [value.toFixed(1), name];
                         return [value, name];
                       }}
                       contentStyle={{ 

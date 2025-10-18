@@ -34,7 +34,7 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
     const data = timePoints.map(time => {
       const dataPoint: any = {
         time,
-        timestamp: format(time, 'MMM d HH:mm')
+        timestamp: format(time, 'HH:mm')
       };
 
       medications.forEach(med => {
@@ -167,14 +167,14 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-[400px] w-full">
+              <div className="h-[300px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={medChartData}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                     <XAxis 
                       dataKey="timestamp" 
                       tick={{ fontSize: 11 }}
-                      interval="preserveStartEnd"
+                      interval={Math.floor(medChartData.length / 12)}
                     />
                     <YAxis 
                       yAxisId="left"
@@ -197,6 +197,10 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
                         borderRadius: '8px'
                       }}
                       labelStyle={{ color: 'hsl(var(--foreground))' }}
+                      labelFormatter={(label) => {
+                        const point = medChartData.find(d => d.timestamp === label);
+                        return point ? format(point.time, 'MMM d, HH:mm') : label;
+                      }}
                       formatter={(value: any, name: string) => {
                         if (name === 'Mood') return [value?.toFixed(1) + '/10', name];
                         if (name.includes('ng/mL')) return [value?.toFixed(2) + ' ng/mL', medication.name];
