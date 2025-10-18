@@ -2,8 +2,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Plus, Pill, Smiley, Brain, TrendUp } from '@phosphor-icons/react';
 import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from '../lib/types';
-import { format } from 'date-fns';
+import { format, subDays } from 'date-fns';
 import DoseLogger from './DoseLogger';
+import { useMemo } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { generateConcentrationCurve } from '@/lib/pharmacokinetics';
 
 interface DashboardProps {
   medications: Medication[];
@@ -23,6 +26,57 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
     const med = medications.find(m => m.id === medicationId);
     return med?.name || 'Unknown';
   };
+
+  const chartData = useMemo(() => {
+    const now = Date.now();
+    const startTime = subDays(now, 7).getTime();
+    const endTime = now;
+
+    const timePoints: number[] = [];
+    for (let i = 0; i <= 168; i++) {
+      timePoints.push(startTime + (i * 3600 * 1000));
+    }
+
+    const data = timePoints.map(time => {
+      const dataPoint: any = {
+        time,
+        timestamp: format(time, 'MMM d HH:mm')
+      };
+
+      medications.forEach(med => {
+        const medDoses = doses.filter(d => d.medicationId === med.id);
+        const curve = generateConcentrationCurve(med, medDoses, time, time, 1);
+        if (curve.length > 0) {
+          dataPoint[`${med.name}_concentration`] = curve[0].concentration;
+        }
+      });
+
+      const closestMood = moodEntries
+        .filter(m => Math.abs(m.timestamp - time) < 3600 * 1000)
+        .sort((a, b) => Math.abs(a.timestamp - time) - Math.abs(b.timestamp - time))[0];
+      
+      if (closestMood) {
+        dataPoint.mood = closestMood.moodScore;
+      }
+
+      return dataPoint;
+    });
+
+    return data;
+  }, [medications, doses, moodEntries]);
+
+  const colors = ['#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ef4444'];
+  
+  const maxConcentration = useMemo(() => {
+    let max = 0;
+    chartData.forEach(point => {
+      medications.forEach(med => {
+        const val = point[`${med.name}_concentration`];
+        if (val && val > max) max = val;
+      });
+    });
+    return max || 100;
+  }, [chartData, medications]);
 
   return (
     <div className="space-y-6">
@@ -82,6 +136,76 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
           </CardContent>
         </Card>
       </div>
+
+      {(medications.length > 0 || moodEntries.length > 0) && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Mood & Medication Concentrations</CardTitle>
+            <CardDescription>Last 7 days - Mood (left axis) and serum concentrations (right axis)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[400px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis 
+                    dataKey="timestamp" 
+                    tick={{ fontSize: 11 }}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis 
+                    yAxisId="left"
+                    label={{ value: 'Mood Score', angle: -90, position: 'insideLeft', style: { fontSize: 12 } }}
+                    domain={[0, 10]}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <YAxis 
+                    yAxisId="right" 
+                    orientation="right"
+                    label={{ value: 'Concentration (ng/mL)', angle: 90, position: 'insideRight', style: { fontSize: 12 } }}
+                    domain={[0, maxConcentration * 1.1]}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'hsl(var(--card))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px'
+                    }}
+                    labelStyle={{ color: 'hsl(var(--foreground))' }}
+                  />
+                  <Legend />
+                  
+                  <Line 
+                    yAxisId="left"
+                    type="monotone" 
+                    dataKey="mood" 
+                    stroke="#22c55e"
+                    strokeWidth={3}
+                    name="Mood"
+                    dot={{ r: 4 }}
+                    connectNulls
+                  />
+                  
+                  {medications.map((med, idx) => (
+                    <Line
+                      key={med.id}
+                      yAxisId="right"
+                      type="monotone"
+                      dataKey={`${med.name}_concentration`}
+                      stroke={colors[idx % colors.length]}
+                      strokeWidth={2}
+                      name={`${med.name} (ng/mL)`}
+                      dot={false}
+                      connectNulls
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2">
         <DoseLogger />

@@ -182,59 +182,141 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
           </CardContent>
         </Card>
       ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Concentration vs. Mood & Cognition</CardTitle>
-            <CardDescription>
-              {selectedMedication?.name} levels correlated with your well-being
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={400}>
-              <ComposedChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis 
-                  dataKey="time" 
-                  tickFormatter={(time) => format(time, 'MMM d')}
-                  className="text-xs"
-                />
-                <YAxis yAxisId="left" label={{ value: 'Concentration (ng/mL)', angle: -90, position: 'insideLeft' }} />
-                <YAxis yAxisId="right" orientation="right" label={{ value: 'Mood / Score', angle: 90, position: 'insideRight' }} />
-                <Tooltip 
-                  labelFormatter={(time) => format(time, 'MMM d, yyyy h:mm a')}
-                  formatter={(value: any, name: string) => {
-                    if (name === 'concentration') return [value.toFixed(2), 'Concentration'];
-                    if (name === 'mood') return [value.toFixed(1), 'Mood'];
-                    if (name === 'cognitiveScore') return [value.toFixed(1), 'Cognitive Score'];
-                    return [value, name];
-                  }}
-                />
-                <Legend />
-                <Area 
-                  yAxisId="left"
-                  type="monotone" 
-                  dataKey="concentration" 
-                  stroke="hsl(var(--primary))" 
-                  fill="hsl(var(--primary))"
-                  fillOpacity={0.2}
-                  name="Concentration"
-                />
-                <Scatter 
-                  yAxisId="right"
-                  dataKey="mood" 
-                  fill="hsl(var(--secondary))" 
-                  name="Mood Score"
-                />
-                <Scatter 
-                  yAxisId="right"
-                  dataKey="cognitiveScore" 
-                  fill="hsl(var(--cognitive))" 
-                  name="Cognitive Score"
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Mood vs. Concentration</CardTitle>
+              <CardDescription>
+                {selectedMedication?.name} serum levels (right) and mood scores (left)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[400px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <XAxis 
+                      dataKey="time" 
+                      tickFormatter={(time) => format(time, 'MMM d')}
+                      tick={{ fontSize: 11 }}
+                    />
+                    <YAxis 
+                      yAxisId="left"
+                      label={{ value: 'Mood Score', angle: -90, position: 'insideLeft', style: { fontSize: 12 } }}
+                      domain={[0, 10]}
+                      tick={{ fontSize: 11 }}
+                    />
+                    <YAxis 
+                      yAxisId="right" 
+                      orientation="right"
+                      label={{ value: 'Concentration (ng/mL)', angle: 90, position: 'insideRight', style: { fontSize: 12 } }}
+                      tick={{ fontSize: 11 }}
+                    />
+                    <Tooltip 
+                      labelFormatter={(time) => format(time, 'MMM d, h:mm a')}
+                      formatter={(value: any, name: string) => {
+                        if (name === 'Concentration') return [value.toFixed(2) + ' ng/mL', name];
+                        if (name === 'Mood') return [value.toFixed(1) + '/10', name];
+                        return [value, name];
+                      }}
+                      contentStyle={{ 
+                        backgroundColor: 'hsl(var(--card))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '8px'
+                      }}
+                    />
+                    <Legend />
+                    <Line 
+                      yAxisId="left"
+                      type="monotone" 
+                      dataKey="mood" 
+                      stroke="#22c55e"
+                      strokeWidth={3}
+                      name="Mood"
+                      dot={{ r: 4 }}
+                      connectNulls
+                    />
+                    <Area 
+                      yAxisId="right"
+                      type="monotone" 
+                      dataKey="concentration" 
+                      stroke="hsl(var(--primary))" 
+                      fill="hsl(var(--primary))"
+                      fillOpacity={0.2}
+                      strokeWidth={2}
+                      name="Concentration"
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Cognitive Performance vs. Concentration</CardTitle>
+              <CardDescription>
+                {selectedMedication?.name} serum levels (right) and cognitive test scores (left)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[400px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <XAxis 
+                      dataKey="time" 
+                      tickFormatter={(time) => format(time, 'MMM d')}
+                      tick={{ fontSize: 11 }}
+                    />
+                    <YAxis 
+                      yAxisId="left"
+                      label={{ value: 'Cognitive Score', angle: -90, position: 'insideLeft', style: { fontSize: 12 } }}
+                      domain={[0, 100]}
+                      tick={{ fontSize: 11 }}
+                    />
+                    <YAxis 
+                      yAxisId="right" 
+                      orientation="right"
+                      label={{ value: 'Concentration (ng/mL)', angle: 90, position: 'insideRight', style: { fontSize: 12 } }}
+                      tick={{ fontSize: 11 }}
+                    />
+                    <Tooltip 
+                      labelFormatter={(time) => format(time, 'MMM d, h:mm a')}
+                      formatter={(value: any, name: string) => {
+                        if (name === 'Concentration') return [value.toFixed(2) + ' ng/mL', name];
+                        if (name === 'Cognitive Score') return [value.toFixed(1), name];
+                        return [value, name];
+                      }}
+                      contentStyle={{ 
+                        backgroundColor: 'hsl(var(--card))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '8px'
+                      }}
+                    />
+                    <Legend />
+                    <Scatter 
+                      yAxisId="left"
+                      dataKey="cognitiveScore" 
+                      fill="hsl(var(--cognitive))"
+                      name="Cognitive Score"
+                    />
+                    <Area 
+                      yAxisId="right"
+                      type="monotone" 
+                      dataKey="concentration" 
+                      stroke="hsl(var(--primary))" 
+                      fill="hsl(var(--primary))"
+                      fillOpacity={0.2}
+                      strokeWidth={2}
+                      name="Concentration"
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
     </div>
   );

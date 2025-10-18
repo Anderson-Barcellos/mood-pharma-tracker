@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useKV } from '@github/spark/hooks';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Smiley, SmileyMeh, SmileySad } from '@phosphor-icons/react';
 import type { MoodEntry } from '../lib/types';
 import { v4 as uuidv4 } from 'uuid';
-import { format } from 'date-fns';
+import { format, subDays } from 'date-fns';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 export default function MoodView() {
   const [moodEntries, setMoodEntries] = useKV<MoodEntry[]>('moodEntries', []);
@@ -48,6 +49,22 @@ export default function MoodView() {
   };
 
   const recentEntries = [...(moodEntries || [])].sort((a, b) => b.timestamp - a.timestamp).slice(0, 10);
+
+  const chartData = useMemo(() => {
+    const last30Days = subDays(Date.now(), 30).getTime();
+    const filteredEntries = (moodEntries || [])
+      .filter(entry => entry.timestamp >= last30Days)
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    return filteredEntries.map(entry => ({
+      timestamp: format(entry.timestamp, 'MMM d'),
+      time: entry.timestamp,
+      mood: entry.moodScore,
+      anxiety: entry.anxietyLevel,
+      energy: entry.energyLevel,
+      focus: entry.focusLevel
+    }));
+  }, [moodEntries]);
 
   return (
     <div className="space-y-6">
@@ -150,6 +167,88 @@ export default function MoodView() {
           </Button>
         </CardContent>
       </Card>
+
+      {chartData.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Mood Trends</CardTitle>
+            <CardDescription>Last 30 days mood tracking</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis 
+                    dataKey="timestamp"
+                    tick={{ fontSize: 11 }}
+                  />
+                  <YAxis 
+                    domain={[0, 10]}
+                    tick={{ fontSize: 11 }}
+                    label={{ value: 'Score', angle: -90, position: 'insideLeft', style: { fontSize: 12 } }}
+                  />
+                  <Tooltip 
+                    labelFormatter={(label, payload) => {
+                      if (payload && payload.length > 0) {
+                        return format(payload[0].payload.time, 'MMM d, yyyy h:mm a');
+                      }
+                      return label;
+                    }}
+                    contentStyle={{ 
+                      backgroundColor: 'hsl(var(--card))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px'
+                    }}
+                  />
+                  <Legend />
+                  <Line 
+                    type="monotone" 
+                    dataKey="mood" 
+                    stroke="#22c55e"
+                    strokeWidth={3}
+                    name="Mood"
+                    dot={{ r: 4 }}
+                  />
+                  {chartData.some(d => d.anxiety !== undefined) && (
+                    <Line 
+                      type="monotone" 
+                      dataKey="anxiety" 
+                      stroke="#ef4444"
+                      strokeWidth={2}
+                      name="Anxiety"
+                      dot={{ r: 3 }}
+                      connectNulls
+                    />
+                  )}
+                  {chartData.some(d => d.energy !== undefined) && (
+                    <Line 
+                      type="monotone" 
+                      dataKey="energy" 
+                      stroke="#f59e0b"
+                      strokeWidth={2}
+                      name="Energy"
+                      dot={{ r: 3 }}
+                      connectNulls
+                    />
+                  )}
+                  {chartData.some(d => d.focus !== undefined) && (
+                    <Line 
+                      type="monotone" 
+                      dataKey="focus" 
+                      stroke="#8b5cf6"
+                      strokeWidth={2}
+                      name="Focus"
+                      dot={{ r: 3 }}
+                      connectNulls
+                    />
+                  )}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

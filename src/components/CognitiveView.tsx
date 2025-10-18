@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useKV } from '@github/spark/hooks';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,7 @@ import type { CognitiveTest, Matrix } from '../lib/types';
 import { v4 as uuidv4 } from 'uuid';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Bar, ComposedChart } from 'recharts';
 
 export default function CognitiveView() {
   const [cognitiveTests, setCognitiveTests] = useKV<CognitiveTest[]>('cognitiveTests', []);
@@ -164,6 +165,18 @@ Return ONLY valid JSON, no markdown or additional text.`;
 
   const recentTests = [...(cognitiveTests || [])].sort((a, b) => b.timestamp - a.timestamp).slice(0, 10);
 
+  const chartData = useMemo(() => {
+    const sortedTests = [...(cognitiveTests || [])].sort((a, b) => a.timestamp - b.timestamp);
+    
+    return sortedTests.map(test => ({
+      timestamp: format(test.timestamp, 'MMM d'),
+      time: test.timestamp,
+      score: test.totalScore,
+      accuracy: test.accuracy * 100,
+      avgResponseTime: test.averageResponseTime
+    }));
+  }, [cognitiveTests]);
+
   if (testInProgress) {
     return (
       <div className="space-y-6">
@@ -241,6 +254,76 @@ Return ONLY valid JSON, no markdown or additional text.`;
           </Button>
         </CardContent>
       </Card>
+
+      {chartData.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Cognitive Performance Trends</CardTitle>
+            <CardDescription>Your test scores over time</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis 
+                    dataKey="timestamp"
+                    tick={{ fontSize: 11 }}
+                  />
+                  <YAxis 
+                    yAxisId="left"
+                    tick={{ fontSize: 11 }}
+                    label={{ value: 'Score', angle: -90, position: 'insideLeft', style: { fontSize: 12 } }}
+                  />
+                  <YAxis 
+                    yAxisId="right"
+                    orientation="right"
+                    domain={[0, 100]}
+                    tick={{ fontSize: 11 }}
+                    label={{ value: 'Accuracy %', angle: 90, position: 'insideRight', style: { fontSize: 12 } }}
+                  />
+                  <Tooltip 
+                    labelFormatter={(label, payload) => {
+                      if (payload && payload.length > 0) {
+                        return format(payload[0].payload.time, 'MMM d, yyyy h:mm a');
+                      }
+                      return label;
+                    }}
+                    formatter={(value: any, name: string) => {
+                      if (name === 'Score') return [value.toFixed(1), name];
+                      if (name === 'Accuracy') return [value.toFixed(0) + '%', name];
+                      if (name === 'Avg Response Time') return [value.toFixed(1) + 's', name];
+                      return [value, name];
+                    }}
+                    contentStyle={{ 
+                      backgroundColor: 'hsl(var(--card))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px'
+                    }}
+                  />
+                  <Legend />
+                  <Bar 
+                    yAxisId="left"
+                    dataKey="score" 
+                    fill="hsl(var(--cognitive))"
+                    name="Score"
+                    radius={[4, 4, 0, 0]}
+                  />
+                  <Line 
+                    yAxisId="right"
+                    type="monotone" 
+                    dataKey="accuracy" 
+                    stroke="#22c55e"
+                    strokeWidth={2}
+                    name="Accuracy"
+                    dot={{ r: 4 }}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
