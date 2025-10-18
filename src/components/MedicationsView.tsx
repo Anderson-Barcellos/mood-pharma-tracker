@@ -8,9 +8,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Pill, Pencil, Trash } from '@phosphor-icons/react';
-import type { Medication, MedicationCategory } from '../lib/types';
+import { Plus, Pill, Pencil, Trash, ClockCounterClockwise } from '@phosphor-icons/react';
+import type { Medication, MedicationCategory, MedicationDose } from '../lib/types';
 import { v4 as uuidv4 } from 'uuid';
+import MedicationDosesView from './MedicationDosesView';
 
 const MEDICATION_CATEGORIES: MedicationCategory[] = [
   'SSRI',
@@ -24,8 +25,11 @@ const MEDICATION_CATEGORIES: MedicationCategory[] = [
 
 export default function MedicationsView() {
   const [medications, setMedications] = useKV<Medication[]>('medications', []);
+  const [doses] = useKV<MedicationDose[]>('doses', []);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMed, setEditingMed] = useState<Medication | null>(null);
+  const [viewDosesMed, setViewDosesMed] = useState<Medication | null>(null);
+  const [dosesDialogOpen, setDosesDialogOpen] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -104,6 +108,15 @@ export default function MedicationsView() {
     if (confirm('Are you sure you want to delete this medication?')) {
       setMedications((current) => (current || []).filter(m => m.id !== id));
     }
+  };
+
+  const handleViewDoses = (med: Medication) => {
+    setViewDosesMed(med);
+    setDosesDialogOpen(true);
+  };
+
+  const getDoseCount = (medicationId: string) => {
+    return (doses || []).filter(d => d.medicationId === medicationId).length;
   };
 
   return (
@@ -289,18 +302,37 @@ export default function MedicationsView() {
                   <p className="text-xs text-muted-foreground mt-3 pt-3 border-t">{med.notes}</p>
                 )}
               </CardContent>
-              <CardFooter className="flex gap-2">
-                <Button variant="outline" size="sm" className="flex-1" onClick={() => openEditDialog(med)}>
-                  <Pencil className="w-4 h-4 mr-2" />
-                  Edit
+              <CardFooter className="flex flex-col gap-2">
+                <Button 
+                  variant="secondary" 
+                  size="sm" 
+                  className="w-full" 
+                  onClick={() => handleViewDoses(med)}
+                >
+                  <ClockCounterClockwise className="w-4 h-4 mr-2" />
+                  View Doses ({getDoseCount(med.id)})
                 </Button>
-                <Button variant="destructive" size="sm" onClick={() => handleDelete(med.id)}>
-                  <Trash className="w-4 h-4" />
-                </Button>
+                <div className="flex gap-2 w-full">
+                  <Button variant="outline" size="sm" className="flex-1" onClick={() => openEditDialog(med)}>
+                    <Pencil className="w-4 h-4 mr-2" />
+                    Edit
+                  </Button>
+                  <Button variant="destructive" size="sm" onClick={() => handleDelete(med.id)}>
+                    <Trash className="w-4 h-4" />
+                  </Button>
+                </div>
               </CardFooter>
             </Card>
           ))}
         </div>
+      )}
+
+      {viewDosesMed && (
+        <MedicationDosesView
+          medication={viewDosesMed}
+          open={dosesDialogOpen}
+          onOpenChange={setDosesDialogOpen}
+        />
       )}
     </div>
   );
