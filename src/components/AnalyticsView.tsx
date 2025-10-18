@@ -67,6 +67,26 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
     });
   }, [selectedMedication, doses, moodEntries, cognitiveTests, selectedMedicationId, dayRange]);
 
+  const concentrationRange = useMemo(() => {
+    if (chartData.length === 0) return { min: 0, max: 100 };
+    
+    const concentrations = chartData
+      .map(d => d.concentration)
+      .filter(c => c > 0);
+    
+    if (concentrations.length === 0) return { min: 0, max: 100 };
+    
+    const min = Math.min(...concentrations);
+    const max = Math.max(...concentrations);
+    const range = max - min;
+    const padding = range * 0.1;
+    
+    return {
+      min: Math.max(0, min - padding),
+      max: max + padding
+    };
+  }, [chartData]);
+
   const stats = useMemo(() => {
     if (!moodEntries || !cognitiveTests) return null;
 
@@ -210,8 +230,9 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
                       yAxisId="right" 
                       orientation="right"
                       label={{ value: 'Concentration (ng/mL)', angle: 90, position: 'insideRight', style: { fontSize: 12 } }}
-                      domain={[0, (dataMax: number) => Math.max(dataMax * 1.1, 10)]}
+                      domain={[concentrationRange.min, concentrationRange.max]}
                       tick={{ fontSize: 11 }}
+                      tickFormatter={(value) => value.toFixed(1)}
                     />
                     <Tooltip 
                       labelFormatter={(time) => format(time, 'MMM d, h:mm a')}
@@ -280,8 +301,9 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
                       yAxisId="right" 
                       orientation="right"
                       label={{ value: 'Concentration (ng/mL)', angle: 90, position: 'insideRight', style: { fontSize: 12 } }}
-                      domain={[0, (dataMax: number) => Math.max(dataMax * 1.1, 10)]}
+                      domain={[concentrationRange.min, concentrationRange.max]}
                       tick={{ fontSize: 11 }}
+                      tickFormatter={(value) => value.toFixed(1)}
                     />
                     <Tooltip 
                       labelFormatter={(time) => format(time, 'MMM d, h:mm a')}

@@ -140,10 +140,23 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
           mood: point.mood
         }));
 
-        const medMaxConcentration = Math.max(
-          ...medChartData.map(d => d.concentration).filter(c => c > 0),
-          10
-        );
+        const concentrationValues = medChartData
+          .map(d => d.concentration)
+          .filter(c => c > 0);
+        
+        const medMaxConcentration = concentrationValues.length > 0 
+          ? Math.max(...concentrationValues)
+          : 100;
+        
+        const medMinConcentration = concentrationValues.length > 0
+          ? Math.min(...concentrationValues)
+          : 0;
+
+        const concentrationRange = medMaxConcentration - medMinConcentration;
+        const scalePadding = concentrationRange * 0.1;
+        
+        const yAxisMin = Math.max(0, medMinConcentration - scalePadding);
+        const yAxisMax = medMaxConcentration + scalePadding;
 
         return (
           <Card key={medication.id}>
@@ -173,8 +186,9 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
                       yAxisId="right" 
                       orientation="right"
                       label={{ value: 'Concentration (ng/mL)', angle: 90, position: 'insideRight', style: { fontSize: 12 } }}
-                      domain={[0, medMaxConcentration * 1.1]}
+                      domain={[yAxisMin, yAxisMax]}
                       tick={{ fontSize: 11 }}
+                      tickFormatter={(value) => value.toFixed(1)}
                     />
                     <Tooltip 
                       contentStyle={{ 
