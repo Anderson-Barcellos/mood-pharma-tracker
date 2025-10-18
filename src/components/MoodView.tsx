@@ -2,27 +2,28 @@ import { useState, useMemo } from 'react';
 import { useKV } from '@github/spark/hooks';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
+import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Smiley, SmileyMeh, SmileySad, Plus, Pencil, Trash, List } from '@phosphor-icons/react';
-import type { MoodEntry } from '../lib/types';
 import { v4 as uuidv4 } from 'uuid';
-import { format, subDays } from 'date-fns';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import type { MoodEntry } from '@/lib/types';
 
 export default function MoodView() {
   const [moodEntries, setMoodEntries] = useKV<MoodEntry[]>('moodEntries', []);
+  
   const [moodScore, setMoodScore] = useState(5);
   const [anxietyLevel, setAnxietyLevel] = useState<number | undefined>(undefined);
   const [energyLevel, setEnergyLevel] = useState<number | undefined>(undefined);
   const [focusLevel, setFocusLevel] = useState<number | undefined>(undefined);
   const [notes, setNotes] = useState('');
   const [showExtended, setShowExtended] = useState(false);
-  
+
   const [quickDialogOpen, setQuickDialogOpen] = useState(false);
   const [quickMoodScore, setQuickMoodScore] = useState(5);
   const now = new Date();
@@ -30,8 +31,9 @@ export default function MoodView() {
   const [quickTime, setQuickTime] = useState(format(now, 'HH:mm'));
 
   const [entriesDialogOpen, setEntriesDialogOpen] = useState(false);
-  const [editingEntry, setEditingEntry] = useState<MoodEntry | null>(null);
+
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<MoodEntry | null>(null);
   const [editMood, setEditMood] = useState(5);
   const [editAnxiety, setEditAnxiety] = useState<number | undefined>(undefined);
   const [editEnergy, setEditEnergy] = useState<number | undefined>(undefined);
@@ -40,14 +42,20 @@ export default function MoodView() {
   const [editDate, setEditDate] = useState('');
   const [editTime, setEditTime] = useState('');
 
+  const getMoodIcon = (score: number) => {
+    if (score >= 7) return <Smiley className="w-8 h-8 text-primary" weight="fill" />;
+    if (score >= 4) return <SmileyMeh className="w-8 h-8 text-muted-foreground" weight="fill" />;
+    return <SmileySad className="w-8 h-8 text-destructive" weight="fill" />;
+  };
+
   const handleSave = () => {
     const entry: MoodEntry = {
       id: uuidv4(),
       timestamp: Date.now(),
       moodScore,
-      anxietyLevel: showExtended ? anxietyLevel : undefined,
-      energyLevel: showExtended ? energyLevel : undefined,
-      focusLevel: showExtended ? focusLevel : undefined,
+      anxietyLevel,
+      energyLevel,
+      focusLevel,
       notes: notes || undefined,
       createdAt: Date.now()
     };
@@ -133,64 +141,50 @@ export default function MoodView() {
     }
   };
 
-  const getMoodIcon = (score: number) => {
-    if (score >= 7) return <Smiley className="w-6 h-6 text-primary" weight="fill" />;
-    if (score >= 4) return <SmileyMeh className="w-6 h-6 text-secondary" weight="fill" />;
-    return <SmileySad className="w-6 h-6 text-destructive" weight="fill" />;
-  };
-
-  const recentEntries = [...(moodEntries || [])].sort((a, b) => b.timestamp - a.timestamp).slice(0, 10);
+  const recentEntries = useMemo(() => {
+    return [...(moodEntries || [])].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
+  }, [moodEntries]);
 
   const chartData = useMemo(() => {
-    const last30Days = subDays(Date.now(), 30).getTime();
-    const filteredEntries = (moodEntries || [])
-      .filter(entry => entry.timestamp >= last30Days)
-      .sort((a, b) => a.timestamp - b.timestamp);
-
-    return filteredEntries.map(entry => ({
-      timestamp: format(entry.timestamp, 'HH:mm'),
-      time: entry.timestamp,
-      mood: entry.moodScore,
-      anxiety: entry.anxietyLevel,
-      energy: entry.energyLevel,
-      focus: entry.focusLevel
-    }));
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    return [...(moodEntries || [])]
+      .filter(e => e.timestamp >= thirtyDaysAgo)
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .map(e => ({
+        timestamp: format(e.timestamp, 'MMM d'),
+        time: e.timestamp,
+        mood: e.moodScore,
+        anxiety: e.anxietyLevel,
+        energy: e.energyLevel,
+        focus: e.focusLevel
+      }));
   }, [moodEntries]);
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight">Mood Tracking</h2>
-          <p className="text-muted-foreground">Record your emotional state over time</p>
+          <h2 className="text-2xl font-bold">Mood Tracking</h2>
+          <p className="text-sm text-muted-foreground">Monitor your emotional state over time</p>
         </div>
         <div className="flex gap-2">
           <Dialog open={quickDialogOpen} onOpenChange={setQuickDialogOpen}>
             <DialogTrigger asChild>
-              <Button
-                onClick={() => {
-                  const newNow = new Date();
-                  setQuickDate(format(newNow, 'yyyy-MM-dd'));
-                  setQuickTime(format(newNow, 'HH:mm'));
-                }}
-              >
+              <Button variant="outline">
                 <Plus className="w-4 h-4 mr-2" />
-                Quick Mood Log
+                Quick Log
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Quick Mood Log</DialogTitle>
-                <DialogDescription>Quickly record your current mood</DialogDescription>
+                <DialogDescription>Log your mood with timestamp</DialogDescription>
               </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="space-y-4">
+              <div className="space-y-4">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label>Mood Score</Label>
-                    <div className="flex items-center gap-2">
-                      {getMoodIcon(quickMoodScore)}
-                      <span className="text-2xl font-bold w-12 text-right">{quickMoodScore}</span>
-                    </div>
+                    <span className="text-lg font-medium">{quickMoodScore}/10</span>
                   </div>
                   <Slider
                     value={[quickMoodScore]}
@@ -198,15 +192,8 @@ export default function MoodView() {
                     min={0}
                     max={10}
                     step={1}
-                    className="w-full"
                   />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Very Low</span>
-                    <span>Neutral</span>
-                    <span>Very High</span>
-                  </div>
                 </div>
-
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Date</Label>
@@ -216,7 +203,6 @@ export default function MoodView() {
                       onChange={(e) => setQuickDate(e.target.value)}
                     />
                   </div>
-
                   <div className="space-y-2">
                     <Label>Time</Label>
                     <Input
@@ -228,34 +214,27 @@ export default function MoodView() {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setQuickDialogOpen(false)}>
-                  Cancel
-                </Button>
                 <Button onClick={handleQuickLog}>Log Mood</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
-
           <Button variant="outline" onClick={() => setEntriesDialogOpen(true)}>
             <List className="w-4 h-4 mr-2" />
-            View All Entries
+            All Entries
           </Button>
         </div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Log Current Mood</CardTitle>
-          <CardDescription>Rate your mood and optional dimensions</CardDescription>
+          <CardTitle>Log Mood Entry</CardTitle>
+          <CardDescription>Record your current emotional state</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-4">
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label>Mood Score</Label>
-              <div className="flex items-center gap-2">
-                {getMoodIcon(moodScore)}
-                <span className="text-2xl font-bold w-12 text-right">{moodScore}</span>
-              </div>
+              <span className="text-lg font-medium">{moodScore}/10</span>
             </div>
             <Slider
               value={[moodScore]}
@@ -361,7 +340,7 @@ export default function MoodView() {
                   <Tooltip 
                     labelFormatter={(label, payload) => {
                       if (payload && payload.length > 0) {
-                        return format(payload[0].payload.time, 'MMM d, HH:mm');
+                        return format(payload[0].payload.time, 'MMM d, yyyy h:mm a');
                       }
                       return label;
                     }}
@@ -537,109 +516,12 @@ export default function MoodView() {
       </Dialog>
 
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit Mood Entry</DialogTitle>
-            <DialogDescription>Update mood information</DialogDescription>
+            <DialogDescription>Update your mood entry details</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Label>Mood Score</Label>
-                <div className="flex items-center gap-2">
-                  {getMoodIcon(editMood)}
-                  <span className="text-2xl font-bold w-12 text-right">{editMood}</span>
-                </div>
-              </div>
-              <Slider
-                value={[editMood]}
-                onValueChange={(value) => setEditMood(value[0])}
-                min={0}
-                max={10}
-                step={1}
-                className="w-full"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Anxiety Level (optional)</Label>
-                <span className="text-lg font-medium">{editAnxiety ?? 'Not set'}</span>
-              </div>
-              {editAnxiety !== undefined && (
-                <Slider
-                  value={[editAnxiety]}
-                  onValueChange={(value) => setEditAnxiety(value[0])}
-                  min={0}
-                  max={10}
-                  step={1}
-                />
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setEditAnxiety(editAnxiety === undefined ? 5 : undefined)}
-              >
-                {editAnxiety === undefined ? 'Add Anxiety Level' : 'Remove Anxiety Level'}
-              </Button>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Energy Level (optional)</Label>
-                <span className="text-lg font-medium">{editEnergy ?? 'Not set'}</span>
-              </div>
-              {editEnergy !== undefined && (
-                <Slider
-                  value={[editEnergy]}
-                  onValueChange={(value) => setEditEnergy(value[0])}
-                  min={0}
-                  max={10}
-                  step={1}
-                />
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setEditEnergy(editEnergy === undefined ? 5 : undefined)}
-              >
-                {editEnergy === undefined ? 'Add Energy Level' : 'Remove Energy Level'}
-              </Button>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Focus Level (optional)</Label>
-                <span className="text-lg font-medium">{editFocus ?? 'Not set'}</span>
-              </div>
-              {editFocus !== undefined && (
-                <Slider
-                  value={[editFocus]}
-                  onValueChange={(value) => setEditFocus(value[0])}
-                  min={0}
-                  max={10}
-                  step={1}
-                />
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setEditFocus(editFocus === undefined ? 5 : undefined)}
-              >
-                {editFocus === undefined ? 'Add Focus Level' : 'Remove Focus Level'}
-              </Button>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Notes</Label>
-              <Textarea
-                value={editNotes}
-                onChange={(e) => setEditNotes(e.target.value)}
-                placeholder="Any additional information..."
-                rows={3}
-              />
-            </div>
-
+          <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Date</Label>
@@ -649,7 +531,6 @@ export default function MoodView() {
                   onChange={(e) => setEditDate(e.target.value)}
                 />
               </div>
-
               <div className="space-y-2">
                 <Label>Time</Label>
                 <Input
@@ -659,11 +540,70 @@ export default function MoodView() {
                 />
               </div>
             </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Mood Score</Label>
+                <span className="text-lg font-medium">{editMood}/10</span>
+              </div>
+              <Slider
+                value={[editMood]}
+                onValueChange={(value) => setEditMood(value[0])}
+                min={0}
+                max={10}
+                step={1}
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Anxiety Level (optional)</Label>
+                <span className="text-lg font-medium">{editAnxiety ?? '-'}</span>
+              </div>
+              <Slider
+                value={[editAnxiety ?? 5]}
+                onValueChange={(value) => setEditAnxiety(value[0])}
+                min={0}
+                max={10}
+                step={1}
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Energy Level (optional)</Label>
+                <span className="text-lg font-medium">{editEnergy ?? '-'}</span>
+              </div>
+              <Slider
+                value={[editEnergy ?? 5]}
+                onValueChange={(value) => setEditEnergy(value[0])}
+                min={0}
+                max={10}
+                step={1}
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Focus Level (optional)</Label>
+                <span className="text-lg font-medium">{editFocus ?? '-'}</span>
+              </div>
+              <Slider
+                value={[editFocus ?? 5]}
+                onValueChange={(value) => setEditFocus(value[0])}
+                min={0}
+                max={10}
+                step={1}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Notes</Label>
+              <Textarea
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                placeholder="Notes..."
+                rows={3}
+              />
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleSaveEdit}>Save Changes</Button>
           </DialogFooter>
         </DialogContent>
