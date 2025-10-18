@@ -210,6 +210,7 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
                       yAxisId="right" 
                       orientation="right"
                       label={{ value: 'Concentration (ng/mL)', angle: 90, position: 'insideRight', style: { fontSize: 12 } }}
+                      domain={[0, (dataMax: number) => Math.max(dataMax * 1.1, 10)]}
                       tick={{ fontSize: 11 }}
                     />
                     <Tooltip 
@@ -279,6 +280,7 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
                       yAxisId="right" 
                       orientation="right"
                       label={{ value: 'Concentration (ng/mL)', angle: 90, position: 'insideRight', style: { fontSize: 12 } }}
+                      domain={[0, (dataMax: number) => Math.max(dataMax * 1.1, 10)]}
                       tick={{ fontSize: 11 }}
                     />
                     <Tooltip 

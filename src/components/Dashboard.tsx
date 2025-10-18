@@ -183,6 +183,11 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
                         borderRadius: '8px'
                       }}
                       labelStyle={{ color: 'hsl(var(--foreground))' }}
+                      formatter={(value: any, name: string) => {
+                        if (name === 'Mood') return [value?.toFixed(1) + '/10', name];
+                        if (name.includes('ng/mL')) return [value?.toFixed(2) + ' ng/mL', medication.name];
+                        return [value, name];
+                      }}
                     />
                     <Legend />
                     
