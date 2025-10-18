@@ -137,75 +137,89 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
         </Card>
       </div>
 
-      {(medications.length > 0 || moodEntries.length > 0) && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Mood & Medication Concentrations</CardTitle>
-            <CardDescription>Last 7 days - Mood (left axis) and serum concentrations (right axis)</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[400px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis 
-                    dataKey="timestamp" 
-                    tick={{ fontSize: 11 }}
-                    interval="preserveStartEnd"
-                  />
-                  <YAxis 
-                    yAxisId="left"
-                    label={{ value: 'Mood Score', angle: -90, position: 'insideLeft', style: { fontSize: 12 } }}
-                    domain={[0, 10]}
-                    tick={{ fontSize: 11 }}
-                  />
-                  <YAxis 
-                    yAxisId="right" 
-                    orientation="right"
-                    label={{ value: 'Concentration (ng/mL)', angle: 90, position: 'insideRight', style: { fontSize: 12 } }}
-                    domain={[0, maxConcentration * 1.1]}
-                    tick={{ fontSize: 11 }}
-                  />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: 'hsl(var(--card))',
-                      border: '1px solid hsl(var(--border))',
-                      borderRadius: '8px'
-                    }}
-                    labelStyle={{ color: 'hsl(var(--foreground))' }}
-                  />
-                  <Legend />
-                  
-                  <Line 
-                    yAxisId="left"
-                    type="monotone" 
-                    dataKey="mood" 
-                    stroke="#22c55e"
-                    strokeWidth={3}
-                    name="Mood"
-                    dot={{ r: 4 }}
-                    connectNulls
-                  />
-                  
-                  {medications.map((med, idx) => (
+      {medications.length > 0 && medications.map((medication, idx) => {
+        const medDoses = doses.filter(d => d.medicationId === medication.id);
+        
+        const medChartData = chartData.map(point => ({
+          ...point,
+          concentration: point[`${medication.name}_concentration`] || 0,
+          mood: point.mood
+        }));
+
+        const medMaxConcentration = Math.max(
+          ...medChartData.map(d => d.concentration).filter(c => c > 0),
+          10
+        );
+
+        return (
+          <Card key={medication.id}>
+            <CardHeader>
+              <CardTitle>{medication.name} - Concentration & Mood</CardTitle>
+              <CardDescription>
+                Last 7 days - Mood (left axis) and serum concentration (right axis)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[400px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={medChartData}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <XAxis 
+                      dataKey="timestamp" 
+                      tick={{ fontSize: 11 }}
+                      interval="preserveStartEnd"
+                    />
+                    <YAxis 
+                      yAxisId="left"
+                      label={{ value: 'Mood Score', angle: -90, position: 'insideLeft', style: { fontSize: 12 } }}
+                      domain={[0, 10]}
+                      tick={{ fontSize: 11 }}
+                    />
+                    <YAxis 
+                      yAxisId="right" 
+                      orientation="right"
+                      label={{ value: 'Concentration (ng/mL)', angle: 90, position: 'insideRight', style: { fontSize: 12 } }}
+                      domain={[0, medMaxConcentration * 1.1]}
+                      tick={{ fontSize: 11 }}
+                    />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'hsl(var(--card))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '8px'
+                      }}
+                      labelStyle={{ color: 'hsl(var(--foreground))' }}
+                    />
+                    <Legend />
+                    
+                    <Line 
+                      yAxisId="left"
+                      type="monotone" 
+                      dataKey="mood" 
+                      stroke="#22c55e"
+                      strokeWidth={3}
+                      name="Mood"
+                      dot={{ r: 4 }}
+                      connectNulls
+                    />
+                    
                     <Line
-                      key={med.id}
                       yAxisId="right"
                       type="monotone"
-                      dataKey={`${med.name}_concentration`}
+                      dataKey="concentration"
                       stroke={colors[idx % colors.length]}
                       strokeWidth={2}
-                      name={`${med.name} (ng/mL)`}
+                      name={`${medication.name} (ng/mL)`}
                       dot={false}
                       connectNulls
                     />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })}
 
       <div className="grid gap-4 md:grid-cols-2">
         <DoseLogger />
