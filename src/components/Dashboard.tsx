@@ -4,6 +4,7 @@ import { Plus, Pill, Smiley, Brain, TrendUp } from '@phosphor-icons/react';
 import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from '../lib/types';
 import { format, subDays } from 'date-fns';
 import DoseLogger from './DoseLogger';
+import QuickMoodLog from './QuickMoodLog';
 import { useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { generateConcentrationCurve } from '@/lib/pharmacokinetics';
@@ -16,16 +17,9 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ medications, doses, moodEntries, cognitiveTests }: DashboardProps) {
-  const recentDoses = [...doses].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
-  const recentMoods = [...moodEntries].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
   const latestTest = cognitiveTests.length > 0 
     ? [...cognitiveTests].sort((a, b) => b.timestamp - a.timestamp)[0]
     : null;
-
-  const getMedicationName = (medicationId: string) => {
-    const med = medications.find(m => m.id === medicationId);
-    return med?.name || 'Unknown';
-  };
 
   const chartData = useMemo(() => {
     const now = Date.now();
@@ -223,42 +217,7 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
 
       <div className="grid gap-4 md:grid-cols-2">
         <DoseLogger />
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Mood</CardTitle>
-            <CardDescription>Your latest mood entries</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {recentMoods.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No mood entries yet</p>
-            ) : (
-              <div className="space-y-3">
-                {recentMoods.map(mood => (
-                  <div key={mood.id} className="flex items-center justify-between text-sm">
-                    <div>
-                      <p className="font-medium">Mood Score: {mood.moodScore}/10</p>
-                      <p className="text-xs text-muted-foreground">
-                        {format(mood.timestamp, 'MMM d, h:mm a')}
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      {mood.anxietyLevel !== undefined && (
-                        <span className="text-xs text-muted-foreground">A:{mood.anxietyLevel}</span>
-                      )}
-                      {mood.energyLevel !== undefined && (
-                        <span className="text-xs text-muted-foreground">E:{mood.energyLevel}</span>
-                      )}
-                      {mood.focusLevel !== undefined && (
-                        <span className="text-xs text-muted-foreground">F:{mood.focusLevel}</span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <QuickMoodLog />
       </div>
 
       {medications.length === 0 && (
