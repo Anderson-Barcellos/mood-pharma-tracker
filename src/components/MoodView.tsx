@@ -1,18 +1,18 @@
 import { useState, useMemo } from 'react';
 import { useKV } from '@github/spark/hooks';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { format } from 'date-fns';
+import { Smiley, SmileyMeh, SmileySad, Plus, List, Pencil, Trash } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
-import { Slider } from '@/components/ui/slider';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Smiley, SmileyMeh, SmileySad, Plus, Pencil, Trash, List } from '@phosphor-icons/react';
+import { Label } from '@/components/ui/label';
+import { Slider } from '@/components/ui/slider';
+import { Textarea } from '@/components/ui/textarea';
 import { v4 as uuidv4 } from 'uuid';
-import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import type { MoodEntry } from '@/lib/types';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 export default function MoodView() {
   const [moodEntries, setMoodEntries] = useKV<MoodEntry[]>('moodEntries', []);
@@ -26,12 +26,11 @@ export default function MoodView() {
 
   const [quickDialogOpen, setQuickDialogOpen] = useState(false);
   const [quickMoodScore, setQuickMoodScore] = useState(5);
-  const now = new Date();
-  const [quickDate, setQuickDate] = useState(format(now, 'yyyy-MM-dd'));
-  const [quickTime, setQuickTime] = useState(format(now, 'HH:mm'));
+  const [quickDate, setQuickDate] = useState('');
+  const [quickTime, setQuickTime] = useState('');
 
   const [entriesDialogOpen, setEntriesDialogOpen] = useState(false);
-
+  
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<MoodEntry | null>(null);
   const [editMood, setEditMood] = useState(5);
@@ -62,7 +61,7 @@ export default function MoodView() {
 
     setMoodEntries((current) => [...(current || []), entry]);
     toast.success('Mood entry saved');
-    
+
     setMoodScore(5);
     setAnxietyLevel(undefined);
     setEnergyLevel(undefined);
@@ -72,6 +71,11 @@ export default function MoodView() {
   };
 
   const handleQuickLog = () => {
+    if (!quickDate || !quickTime) {
+      toast.error('Please select date and time');
+      return;
+    }
+
     const dateTime = new Date(`${quickDate}T${quickTime}`);
     const timestamp = dateTime.getTime();
 
@@ -83,15 +87,13 @@ export default function MoodView() {
     };
 
     setMoodEntries((current) => [...(current || []), entry]);
-    toast.success('Quick mood logged', {
-      description: format(timestamp, 'MMM d, h:mm a')
-    });
-
-    setQuickMoodScore(5);
-    const newNow = new Date();
-    setQuickDate(format(newNow, 'yyyy-MM-dd'));
-    setQuickTime(format(newNow, 'HH:mm'));
+    toast.success('Quick mood logged');
     setQuickDialogOpen(false);
+
+    const now = new Date();
+    setQuickDate(format(now, 'yyyy-MM-dd'));
+    setQuickTime(format(now, 'HH:mm'));
+    setQuickMoodScore(5);
   };
 
   const handleEdit = (entry: MoodEntry) => {
@@ -101,41 +103,36 @@ export default function MoodView() {
     setEditEnergy(entry.energyLevel);
     setEditFocus(entry.focusLevel);
     setEditNotes(entry.notes || '');
-    const date = new Date(entry.timestamp);
-    setEditDate(format(date, 'yyyy-MM-dd'));
-    setEditTime(format(date, 'HH:mm'));
+    setEditDate(format(entry.timestamp, 'yyyy-MM-dd'));
+    setEditTime(format(entry.timestamp, 'HH:mm'));
     setEditDialogOpen(true);
   };
 
   const handleSaveEdit = () => {
-    if (!editingEntry) return;
+    if (!editingEntry || !editDate || !editTime) return;
 
     const dateTime = new Date(`${editDate}T${editTime}`);
     const timestamp = dateTime.getTime();
 
-    setMoodEntries((current) =>
-      (current || []).map(e =>
-        e.id === editingEntry.id
-          ? {
-              ...e,
-              timestamp,
-              moodScore: editMood,
-              anxietyLevel: editAnxiety,
-              energyLevel: editEnergy,
-              focusLevel: editFocus,
-              notes: editNotes || undefined
-            }
-          : e
-      )
-    );
+    const updatedEntry: MoodEntry = {
+      ...editingEntry,
+      timestamp,
+      moodScore: editMood,
+      anxietyLevel: editAnxiety,
+      energyLevel: editEnergy,
+      focusLevel: editFocus,
+      notes: editNotes || undefined
+    };
 
+    setMoodEntries((current) => 
+      (current || []).map(e => e.id === editingEntry.id ? updatedEntry : e)
+    );
     toast.success('Mood entry updated');
     setEditDialogOpen(false);
-    setEditingEntry(null);
   };
 
   const handleDelete = (entryId: string) => {
-    if (confirm('Are you sure you want to delete this mood entry?')) {
+    if (window.confirm('Delete this mood entry?')) {
       setMoodEntries((current) => (current || []).filter(e => e.id !== entryId));
       toast.success('Mood entry deleted');
     }
@@ -160,6 +157,14 @@ export default function MoodView() {
       }));
   }, [moodEntries]);
 
+  const initializeQuickLog = () => {
+    const now = new Date();
+    setQuickDate(format(now, 'yyyy-MM-dd'));
+    setQuickTime(format(now, 'HH:mm'));
+    setQuickMoodScore(5);
+    setQuickDialogOpen(true);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -170,7 +175,7 @@ export default function MoodView() {
         <div className="flex gap-2">
           <Dialog open={quickDialogOpen} onOpenChange={setQuickDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline">
+              <Button variant="outline" onClick={initializeQuickLog}>
                 <Plus className="w-4 h-4 mr-2" />
                 Quick Log
               </Button>
@@ -245,22 +250,27 @@ export default function MoodView() {
               className="w-full"
             />
             <div className="flex justify-between text-xs text-muted-foreground">
-              <span>Very Low</span>
+              <span>Terrible</span>
               <span>Neutral</span>
-              <span>Very High</span>
+              <span>Excellent</span>
             </div>
           </div>
 
-          {!showExtended ? (
-            <Button variant="outline" onClick={() => setShowExtended(true)} className="w-full">
-              Add More Dimensions
-            </Button>
-          ) : (
-            <div className="space-y-4 pt-4 border-t">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowExtended(!showExtended)}
+            className="w-full"
+          >
+            {showExtended ? 'Hide' : 'Show'} Extended Metrics
+          </Button>
+
+          {showExtended && (
+            <>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label>Anxiety Level</Label>
-                  <span className="text-lg font-medium">{anxietyLevel ?? 5}</span>
+                  <span className="text-lg font-medium">{anxietyLevel ?? '-'}</span>
                 </div>
                 <Slider
                   value={[anxietyLevel ?? 5]}
@@ -274,7 +284,7 @@ export default function MoodView() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label>Energy Level</Label>
-                  <span className="text-lg font-medium">{energyLevel ?? 5}</span>
+                  <span className="text-lg font-medium">{energyLevel ?? '-'}</span>
                 </div>
                 <Slider
                   value={[energyLevel ?? 5]}
@@ -288,7 +298,7 @@ export default function MoodView() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label>Focus Level</Label>
-                  <span className="text-lg font-medium">{focusLevel ?? 5}</span>
+                  <span className="text-lg font-medium">{focusLevel ?? '-'}</span>
                 </div>
                 <Slider
                   value={[focusLevel ?? 5]}
@@ -298,7 +308,7 @@ export default function MoodView() {
                   step={1}
                 />
               </div>
-            </div>
+            </>
           )}
 
           <div className="space-y-2">
@@ -306,7 +316,7 @@ export default function MoodView() {
             <Textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="How are you feeling? Any context..."
+              placeholder="Add any relevant notes..."
               rows={3}
             />
           </div>
@@ -320,197 +330,139 @@ export default function MoodView() {
       {chartData.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Mood Trends</CardTitle>
-            <CardDescription>Last 30 days mood tracking</CardDescription>
+            <CardTitle>Mood Trend (Last 30 Days)</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-[300px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis 
-                    dataKey="timestamp"
-                    tick={{ fontSize: 11 }}
-                  />
-                  <YAxis 
-                    domain={[0, 10]}
-                    tick={{ fontSize: 11 }}
-                    label={{ value: 'Score', angle: -90, position: 'insideLeft', style: { fontSize: 12 } }}
-                  />
-                  <Tooltip 
-                    labelFormatter={(label, payload) => {
-                      if (payload && payload.length > 0) {
-                        return format(payload[0].payload.time, 'MMM d, yyyy h:mm a');
-                      }
-                      return label;
-                    }}
-                    contentStyle={{ 
-                      backgroundColor: 'hsl(var(--card))',
-                      border: '1px solid hsl(var(--border))',
-                      borderRadius: '8px'
-                    }}
-                  />
-                  <Legend />
-                  <Line 
-                    type="monotone" 
-                    dataKey="mood" 
-                    stroke="#22c55e"
-                    strokeWidth={3}
-                    name="Mood"
-                    dot={{ r: 4 }}
-                  />
-                  {chartData.some(d => d.anxiety !== undefined) && (
-                    <Line 
-                      type="monotone" 
-                      dataKey="anxiety" 
-                      stroke="#ef4444"
-                      strokeWidth={2}
-                      name="Anxiety"
-                      dot={{ r: 3 }}
-                      connectNulls
-                    />
-                  )}
-                  {chartData.some(d => d.energy !== undefined) && (
-                    <Line 
-                      type="monotone" 
-                      dataKey="energy" 
-                      stroke="#f59e0b"
-                      strokeWidth={2}
-                      name="Energy"
-                      dot={{ r: 3 }}
-                      connectNulls
-                    />
-                  )}
-                  {chartData.some(d => d.focus !== undefined) && (
-                    <Line 
-                      type="monotone" 
-                      dataKey="focus" 
-                      stroke="#8b5cf6"
-                      strokeWidth={2}
-                      name="Focus"
-                      dot={{ r: 3 }}
-                      connectNulls
-                    />
-                  )}
-                </LineChart>
-              </ResponsiveContainer>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="timestamp" />
+                <YAxis domain={[0, 10]} />
+                <Tooltip />
+                <Legend />
+                <Line type="monotone" dataKey="mood" stroke="#10b981" name="Mood" />
+                {chartData.some(d => d.anxiety !== undefined) && (
+                  <Line type="monotone" dataKey="anxiety" stroke="#f59e0b" name="Anxiety" />
+                )}
+                {chartData.some(d => d.energy !== undefined) && (
+                  <Line type="monotone" dataKey="energy" stroke="#3b82f6" name="Energy" />
+                )}
+                {chartData.some(d => d.focus !== undefined) && (
+                  <Line type="monotone" dataKey="focus" stroke="#8b5cf6" name="Focus" />
+                )}
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {recentEntries.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Entries</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {recentEntries.map(entry => (
+                <div key={entry.id} className="flex items-start gap-3 p-3 border rounded-lg">
+                  {getMoodIcon(entry.moodScore)}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">Mood: {entry.moodScore}/10</span>
+                      {entry.anxietyLevel !== undefined && (
+                        <span className="text-sm text-muted-foreground">Anxiety: {entry.anxietyLevel}</span>
+                      )}
+                      {entry.energyLevel !== undefined && (
+                        <span className="text-sm text-muted-foreground">Energy: {entry.energyLevel}</span>
+                      )}
+                      {entry.focusLevel !== undefined && (
+                        <span className="text-sm text-muted-foreground">Focus: {entry.focusLevel}</span>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {format(entry.timestamp, 'MMM d, yyyy h:mm a')}
+                    </p>
+                    {entry.notes && (
+                      <p className="text-sm mt-1">{entry.notes}</p>
+                    )}
+                  </div>
+                  <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleEdit(entry)}
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDelete(entry.id)}
+                    >
+                      <Trash className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Entries</CardTitle>
-          <CardDescription>Your mood history</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {recentEntries.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No mood entries yet</p>
-          ) : (
-            <div className="space-y-4">
-              {recentEntries.map(entry => (
-                <div key={entry.id} className="flex items-start gap-4 p-4 rounded-lg border">
-                  <div className="flex-shrink-0 pt-1">
-                    {getMoodIcon(entry.moodScore)}
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-lg font-medium">Mood: {entry.moodScore}/10</span>
-                      <span className="text-xs text-muted-foreground">
-                        {format(entry.timestamp, 'MMM d, yyyy h:mm a')}
-                      </span>
-                    </div>
-                    {(entry.anxietyLevel !== undefined || entry.energyLevel !== undefined || entry.focusLevel !== undefined) && (
-                      <div className="flex gap-4 text-sm">
-                        {entry.anxietyLevel !== undefined && (
-                          <span className="text-muted-foreground">Anxiety: {entry.anxietyLevel}/10</span>
-                        )}
-                        {entry.energyLevel !== undefined && (
-                          <span className="text-muted-foreground">Energy: {entry.energyLevel}/10</span>
-                        )}
-                        {entry.focusLevel !== undefined && (
-                          <span className="text-muted-foreground">Focus: {entry.focusLevel}/10</span>
-                        )}
-                      </div>
-                    )}
-                    {entry.notes && (
-                      <p className="text-sm text-muted-foreground italic">{entry.notes}</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
       <Dialog open={entriesDialogOpen} onOpenChange={setEntriesDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>All Mood Entries</DialogTitle>
-            <DialogDescription>View, edit, or delete your mood history</DialogDescription>
+            <DialogDescription>
+              {moodEntries?.length || 0} total entries
+            </DialogDescription>
           </DialogHeader>
-          <div className="flex-1 overflow-y-auto">
-            {(moodEntries || []).length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                No mood entries yet
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {[...(moodEntries || [])].sort((a, b) => b.timestamp - a.timestamp).map(entry => (
-                  <Card key={entry.id} className="shadow-sm">
-                    <CardContent className="pt-4">
-                      <div className="flex items-start gap-4">
-                        <div className="flex-shrink-0 pt-1">
-                          {getMoodIcon(entry.moodScore)}
-                        </div>
-                        <div className="flex-1 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-lg font-medium">Mood: {entry.moodScore}/10</span>
-                            <span className="text-xs text-muted-foreground">
-                              {format(entry.timestamp, 'MMM d, yyyy h:mm a')}
-                            </span>
-                          </div>
-                          {(entry.anxietyLevel !== undefined || entry.energyLevel !== undefined || entry.focusLevel !== undefined) && (
-                            <div className="flex gap-4 text-sm">
-                              {entry.anxietyLevel !== undefined && (
-                                <span className="text-muted-foreground">Anxiety: {entry.anxietyLevel}/10</span>
-                              )}
-                              {entry.energyLevel !== undefined && (
-                                <span className="text-muted-foreground">Energy: {entry.energyLevel}/10</span>
-                              )}
-                              {entry.focusLevel !== undefined && (
-                                <span className="text-muted-foreground">Focus: {entry.focusLevel}/10</span>
-                              )}
-                            </div>
-                          )}
-                          {entry.notes && (
-                            <p className="text-sm text-muted-foreground italic">{entry.notes}</p>
-                          )}
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEdit(entry)}
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => handleDelete(entry.id)}
-                          >
-                            <Trash className="w-4 h-4" />
-                          </Button>
-                        </div>
+          <div className="space-y-3">
+            {[...(moodEntries || [])].sort((a, b) => b.timestamp - a.timestamp).map(entry => (
+              <Card key={entry.id}>
+                <CardContent className="pt-4">
+                  <div className="flex items-start gap-3">
+                    {getMoodIcon(entry.moodScore)}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">Mood: {entry.moodScore}/10</span>
+                        {entry.anxietyLevel !== undefined && (
+                          <span className="text-sm text-muted-foreground">Anxiety: {entry.anxietyLevel}</span>
+                        )}
+                        {entry.energyLevel !== undefined && (
+                          <span className="text-sm text-muted-foreground">Energy: {entry.energyLevel}</span>
+                        )}
+                        {entry.focusLevel !== undefined && (
+                          <span className="text-sm text-muted-foreground">Focus: {entry.focusLevel}</span>
+                        )}
                       </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
+                      <p className="text-sm text-muted-foreground">
+                        {format(entry.timestamp, 'MMM d, yyyy h:mm a')}
+                      </p>
+                      {entry.notes && (
+                        <p className="text-sm mt-1">{entry.notes}</p>
+                      )}
+                    </div>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEdit(entry)}
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleDelete(entry.id)}
+                      >
+                        <Trash className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </DialogContent>
       </Dialog>
