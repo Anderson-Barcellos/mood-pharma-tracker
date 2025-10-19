@@ -1,9 +1,8 @@
 import { useMemo, useState } from 'react';
-import { useKV } from '@github/spark/hooks';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Brain, Play } from '@phosphor-icons/react';
-import type { CognitiveTest, Matrix } from '../lib/types';
+import type { Matrix } from '../lib/types';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 import {
@@ -17,7 +16,7 @@ import {
   Bar,
   Line
 } from 'recharts';
-import { safeFormat } from '@/lib/utils';
+import { cn, safeFormat } from '@/lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   requestMatrix,
@@ -27,29 +26,14 @@ import {
   MatrixGenerationError,
   type MatrixSource
 } from '@/lib/gemini';
+import { useCognitiveTests } from '@/hooks/use-cognitive-tests';
 
 const matrixPrompt = `You are an expert in psychometrics creating Raven's Progressive Matrices.
-import { XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Bar, Line, ComposedChart } from 'recharts';
-import { safeFormat } from '@/lib/utils';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Bar, ComposedChart } from 'recharts';
-import { cn, safeFormat } from '@/lib/utils';
-
-export default function CognitiveView() {
-  const [cognitiveTests, setCognitiveTests] = useKV<CognitiveTest[]>('cognitiveTests', []);
-  const [testInProgress, setTestInProgress] = useState(false);
-  const [currentMatrixIndex, setCurrentMatrixIndex] = useState(0);
-  const [currentMatrix, setCurrentMatrix] = useState<Matrix | null>(null);
-  const [matrices, setMatrices] = useState<Matrix[]>([]);
-  const [startTime, setStartTime] = useState<number>(0);
-  const [isLoading, setIsLoading] = useState(false);
-
-  const generateMatrix = async (): Promise<Matrix | null> => {
-    const prompt = `You are an expert in psychometrics creating Raven's Progressive Matrices.
 
 INSTRUCTIONS:
-1. Create a 3x3 matrix where the first 8 cells follow a logical pattern
-2. The 9th cell (bottom right) is empty - this is what the user must complete
-3. Difficulty level: medium
+1. Create a 3x3 matrix where the first 8 cells follow a logical pattern.
+2. Leave the bottom-right cell empty for the user to solve.
+3. Difficulty level: medium.
 
 PATTERN RULES (choose 1-2 simultaneous patterns):
 - Numerical progression of elements
@@ -57,7 +41,7 @@ PATTERN RULES (choose 1-2 simultaneous patterns):
 - Shape transformation (circle → square → triangle)
 - Fill pattern (solid → striped → empty)
 - Spatial position changes
-- Overlapping/layering
+- Overlapping or layering
 
 OUTPUT FORMAT (JSON):
 {
@@ -71,25 +55,26 @@ OUTPUT FORMAT (JSON):
 TECHNICAL REQUIREMENTS:
 - Matrix: viewBox 0 0 600 600, cells 200x200 each
 - Options: viewBox 0 0 200 200 each
-- Use distinct but not vibrant colors
-- Subtle grid delimiting cells
+- Use distinct but not overly vibrant colors
+- Subtle grid delineating cells
 - Cell 9 empty/gray with question mark
-- 1 correct answer + 5 plausible distractors
+- Provide 1 correct answer + 5 distractors
 
-Return ONLY valid JSON, no markdown or additional text.`;
+Return ONLY valid JSON, no markdown or extra commentary.`;
 
 type GenerateMatrixOptions = {
   offline?: boolean;
 };
 
 export default function CognitiveView() {
-  const [cognitiveTests, setCognitiveTests] = useKV<CognitiveTest[]>('cognitiveTests', []);
+  const { cognitiveTests, createCognitiveTest } = useCognitiveTests();
   const [testInProgress, setTestInProgress] = useState(false);
   const [currentMatrixIndex, setCurrentMatrixIndex] = useState(0);
   const [currentMatrix, setCurrentMatrix] = useState<Matrix | null>(null);
   const [matrices, setMatrices] = useState<Matrix[]>([]);
   const [startTime, setStartTime] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [showResults, setShowResults] = useState(false);
   const [offlineMode, setOfflineMode] = useState(false);
   const [offlineIndex, setOfflineIndex] = useState(0);
   const [matrixSource, setMatrixSource] = useState<MatrixSource | null>(null);
@@ -132,44 +117,18 @@ export default function CognitiveView() {
       setAiError(null);
       setShowOfflinePrompt(false);
 
-      return {
-        matrixId: result.id ?? uuidv4(),
-        svgContent: result.matrixSVG,
-        correctAnswer: result.correctAnswer,
-        userAnswer: -1,
-        responseTime: 0,
-        wasCorrect: false,
-        explanation: result.explanation,
-        options: result.options,
-        patterns: result.patterns,
-        source: result
-      const response = await window.spark.llm(prompt, 'gpt-4o', true);
-      const data = JSON.parse(response);
-
-      const options = Array.isArray(data.options)
-        ? data.options.filter((option: unknown) => typeof option === 'string')
-        : [];
-      const patterns = Array.isArray(data.patterns)
-        ? data.patterns.filter((pattern: unknown) => typeof pattern === 'string')
-        : [];
-
-      if (typeof data.matrixSVG !== 'string' || options.length === 0 || typeof data.correctAnswer !== 'number') {
-        throw new Error('Invalid matrix payload');
-      }
-
-      const boundedCorrectAnswer = Math.max(0, Math.min(options.length - 1, data.correctAnswer));
-
-      return {
-        matrixId: uuidv4(),
-        svgContent: data.matrixSVG,
-        options,
-        patterns,
-        correctAnswer: boundedCorrectAnswer,
-        userAnswer: -1,
-        responseTime: 0,
-        wasCorrect: false,
-        explanation: typeof data.explanation === 'string' ? data.explanation : 'No explanation provided.'
-      };
+        return {
+          matrixId: result.id ?? uuidv4(),
+          svgContent: result.matrixSVG,
+          correctAnswer: result.correctAnswer,
+          userAnswer: -1,
+          responseTime: 0,
+          wasCorrect: false,
+          explanation: result.explanation,
+          options: result.options,
+          patterns: result.patterns,
+          source: result.source
+        };
     } catch (error) {
       if (error instanceof MatrixGenerationError) {
         if (error.code === 'FALLBACK_REQUIRED' || error.code === 'GEMINI_UNAVAILABLE' || error.code === 'SPARK_UNAVAILABLE') {
@@ -270,14 +229,14 @@ export default function CognitiveView() {
         setCurrentMatrixIndex(currentMatrixIndex + 1);
         setStartTime(Date.now());
       } else {
-        finishTest(updatedMatrices);
+        await finishTest(updatedMatrices);
       }
     } else {
-      finishTest(updatedMatrices);
+      await finishTest(updatedMatrices);
     }
   };
 
-  const finishTest = (completedMatrices: Matrix[]) => {
+  const finishTest = async (completedMatrices: Matrix[]) => {
     const totalCorrect = completedMatrices.filter(m => m.wasCorrect).length;
     const accuracy = completedMatrices.length > 0 ? totalCorrect / completedMatrices.length : 0;
     const avgResponseTime =
@@ -291,17 +250,16 @@ export default function CognitiveView() {
       return sum + matrixScore;
     }, 0);
 
-    const test: CognitiveTest = {
-      id: uuidv4(),
-      timestamp: Date.now(),
+    const now = Date.now();
+    await createCognitiveTest({
+      timestamp: now,
       matrices: completedMatrices,
       totalScore,
       averageResponseTime: avgResponseTime,
       accuracy,
-      createdAt: Date.now()
-    };
-
-    setCognitiveTests((current) => [...(current || []), test]);
+      createdAt: now
+    });
+    setShowResults(true);
     setTestInProgress(false);
 
     toast.success('Test completed!', {
@@ -309,10 +267,10 @@ export default function CognitiveView() {
     });
   };
 
-  const recentTests = [...(cognitiveTests || [])].sort((a, b) => b.timestamp - a.timestamp).slice(0, 10);
+  const recentTests = [...cognitiveTests].sort((a, b) => b.timestamp - a.timestamp).slice(0, 10);
 
   const chartData = useMemo(() => {
-    const sortedTests = [...(cognitiveTests || [])].sort((a, b) => a.timestamp - b.timestamp);
+    const sortedTests = [...cognitiveTests].sort((a, b) => a.timestamp - b.timestamp);
 
     return sortedTests.map(test => ({
       timestamp: safeFormat(test.timestamp, 'HH:mm', 'N/A'),
