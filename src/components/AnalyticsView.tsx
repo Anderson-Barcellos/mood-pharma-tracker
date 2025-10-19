@@ -6,6 +6,7 @@ import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from '../li
 import { generateConcentrationCurve } from '../lib/pharmacokinetics';
 import { ComposedChart, Line, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area } from 'recharts';
 import { format, subDays } from 'date-fns';
+import { useTimeFormat } from '@/hooks/use-time-format';
 
 interface AnalyticsViewProps {
   medications: Medication[];
@@ -17,6 +18,7 @@ interface AnalyticsViewProps {
 export default function AnalyticsView({ medications, doses, moodEntries, cognitiveTests }: AnalyticsViewProps) {
   const [selectedMedicationId, setSelectedMedicationId] = useState<string>('');
   const [dayRange, setDayRange] = useState(14);
+  const { formatXAxis, formatTooltip, getXAxisInterval, isMobile } = useTimeFormat();
 
   const selectedMedication = medications?.find(m => m.id === selectedMedicationId);
 
@@ -217,8 +219,9 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                     <XAxis 
                       dataKey="time" 
-                      tickFormatter={(time) => format(time, 'HH:mm')}
+                      tickFormatter={formatXAxis}
                       tick={{ fontSize: 11 }}
+                      interval={getXAxisInterval(chartData.length)}
                     />
                     <YAxis 
                       yAxisId="left"
@@ -235,7 +238,7 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
                       tickFormatter={(value) => value.toFixed(1)}
                     />
                     <Tooltip 
-                      labelFormatter={(time) => format(time, 'MMM d, HH:mm')}
+                      labelFormatter={formatTooltip}
                       formatter={(value: any, name: string) => {
                         if (name === 'Concentration') return [value.toFixed(2) + ' ng/mL', name];
                         if (name === 'Mood') return [value.toFixed(1) + '/10', name];
@@ -288,8 +291,9 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                     <XAxis 
                       dataKey="time" 
-                      tickFormatter={(time) => format(time, 'HH:mm')}
+                      tickFormatter={formatXAxis}
                       tick={{ fontSize: 11 }}
+                      interval={getXAxisInterval(chartData.length)}
                     />
                     <YAxis 
                       yAxisId="left"
@@ -306,7 +310,7 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
                       tickFormatter={(value) => value.toFixed(1)}
                     />
                     <Tooltip 
-                      labelFormatter={(time) => format(time, 'MMM d, HH:mm')}
+                      labelFormatter={formatTooltip}
                       formatter={(value: any, name: string) => {
                         return [value, name];
                       }}

@@ -8,6 +8,7 @@ import QuickMoodLog from './QuickMoodLog';
 import { useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { generateConcentrationCurve } from '@/lib/pharmacokinetics';
+import { useTimeFormat } from '@/hooks/use-time-format';
 
 interface DashboardProps {
   medications: Medication[];
@@ -17,6 +18,8 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ medications, doses, moodEntries, cognitiveTests }: DashboardProps) {
+  const { formatXAxis, formatTooltip, getXAxisInterval, isMobile } = useTimeFormat();
+  
   const latestTest = cognitiveTests.length > 0 
     ? [...cognitiveTests].sort((a, b) => b.timestamp - a.timestamp)[0]
     : null;
@@ -34,7 +37,7 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
     const data = timePoints.map(time => {
       const dataPoint: any = {
         time,
-        timestamp: format(time, 'HH:mm')
+        timestamp: time
       };
 
       medications.forEach(med => {
@@ -173,8 +176,9 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                     <XAxis 
                       dataKey="timestamp" 
+                      tickFormatter={formatXAxis}
                       tick={{ fontSize: 11 }}
-                      interval={Math.floor(medChartData.length / 12)}
+                      interval={getXAxisInterval(medChartData.length)}
                     />
                     <YAxis 
                       yAxisId="left"
@@ -199,7 +203,7 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
                       labelStyle={{ color: 'hsl(var(--foreground))' }}
                       labelFormatter={(label) => {
                         const point = medChartData.find(d => d.timestamp === label);
-                        return point ? format(point.time, 'MMM d, HH:mm') : label;
+                        return point ? formatTooltip(point.time) : label;
                       }}
                       formatter={(value: any, name: string) => {
                         if (name === 'Mood') return [value?.toFixed(1) + '/10', name];
