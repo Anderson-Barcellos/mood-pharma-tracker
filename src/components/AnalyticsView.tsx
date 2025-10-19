@@ -20,7 +20,7 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
     medications.length > 0 ? medications[0].id : ''
   );
   const [dayRange, setDayRange] = useState(7);
-  const { formatXAxis, formatTooltip, getXAxisInterval } = useTimeFormat();
+  const { formatXAxis, formatTooltip, getXAxisInterval } = useTimeFormat('days', dayRange);
 
   const selectedMedication = medications.find(m => m.id === selectedMedicationId);
 
@@ -31,10 +31,13 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
     const startTime = subDays(now, dayRange).getTime();
     const endTime = now;
 
+    const pointsPerDay = dayRange <= 3 ? 24 : dayRange <= 7 ? 12 : 8;
+    const totalPoints = dayRange * pointsPerDay;
+    const interval = (endTime - startTime) / totalPoints;
+
     const timePoints: number[] = [];
-    const hoursInRange = dayRange * 24;
-    for (let i = 0; i <= hoursInRange; i++) {
-      timePoints.push(startTime + (i * 3600 * 1000));
+    for (let i = 0; i <= totalPoints; i++) {
+      timePoints.push(startTime + (i * interval));
     }
 
     const medDoses = doses.filter(d => d.medicationId === selectedMedication.id);
@@ -47,14 +50,16 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
     );
 
     const data = timePoints.map((time, idx) => {
+      const concentration = concentrationCurve[idx]?.concentration || 0;
+      
       const dataPoint: any = {
         time,
         timestamp: time,
-        concentration: concentrationCurve[idx]?.concentration || 0
+        concentration: concentration > 0.01 ? concentration : null
       };
 
       const nearbyMoods = moodEntries.filter(
-        m => Math.abs(m.timestamp - time) < 3600 * 1000
+        m => Math.abs(m.timestamp - time) < interval
       );
       if (nearbyMoods.length > 0) {
         const closestMood = nearbyMoods.sort(
@@ -67,7 +72,7 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
       }
 
       const nearbyTests = cognitiveTests.filter(
-        t => Math.abs(t.timestamp - time) < 3600 * 1000
+        t => Math.abs(t.timestamp - time) < interval
       );
       if (nearbyTests.length > 0) {
         const closestTest = nearbyTests.sort(
@@ -88,14 +93,14 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
 
     const concentrations = chartData
       .map(d => d.concentration)
-      .filter(c => c > 0);
+      .filter(c => c !== null && c > 0);
 
     if (concentrations.length === 0) return { min: 0, max: 100 };
 
     const min = Math.min(...concentrations);
     const max = Math.max(...concentrations);
     const range = max - min;
-    const padding = range * 0.1;
+    const padding = range * 0.15;
 
     return {
       min: Math.max(0, min - padding),
@@ -144,7 +149,7 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
           <CardDescription>Select medication and time range</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Medication</Label>
               <Select value={selectedMedicationId} onValueChange={setSelectedMedicationId}>
@@ -168,6 +173,8 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="1">Last 24 hours</SelectItem>
+                  <SelectItem value="2">Last 2 days</SelectItem>
                   <SelectItem value="3">Last 3 days</SelectItem>
                   <SelectItem value="7">Last 7 days</SelectItem>
                   <SelectItem value="14">Last 14 days</SelectItem>
@@ -204,6 +211,12 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
             <div className="h-[400px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={chartData}>
+                  <defs>
+                    <linearGradient id="concentrationGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.4}/>
+                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.05}/>
+                    </linearGradient>
+                  </defs>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                   <XAxis
                     dataKey="timestamp"
@@ -230,6 +243,16 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
                       const point = chartData.find(d => d.timestamp === label);
                       return point ? formatTooltip(point.time) : label;
                     }}
+                    formatter={(value: any, name: string) => {
+                      if (value === null || value === undefined) return ['No data', name];
+                      if (name === 'Mood Score' || name === 'Cognitive Score') {
+                        return [value.toFixed(2), name];
+                      }
+                      if (name === 'Concentration') {
+                        return [value.toFixed(2) + ' ng/mL', name];
+                      }
+                      return [value, name];
+                    }}
                     contentStyle={{
                       backgroundColor: 'hsl(var(--card))',
                       border: '1px solid hsl(var(--border))',
@@ -242,10 +265,11 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
                     yAxisId="right"
                     type="monotone"
                     dataKey="concentration"
-                    fill="hsl(var(--primary) / 0.1)"
+                    fill="url(#concentrationGradient)"
                     stroke="hsl(var(--primary))"
                     strokeWidth={2}
                     name="Concentration"
+                    connectNulls={false}
                   />
 
                   <Scatter

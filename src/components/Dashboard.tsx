@@ -1,12 +1,14 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 import { Plus, Pill, Smiley, Brain, TrendUp } from '@phosphor-icons/react';
 import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from '../lib/types';
-import { format, subDays } from 'date-fns';
+import { format, subDays, subHours } from 'date-fns';
 import DoseLogger from './DoseLogger';
 import QuickMoodLog from './QuickMoodLog';
-import { useMemo } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { useMemo, useState } from 'react';
+import { LineChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { generateConcentrationCurve } from '@/lib/pharmacokinetics';
 import { useTimeFormat } from '@/hooks/use-time-format';
 
@@ -18,7 +20,10 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ medications, doses, moodEntries, cognitiveTests }: DashboardProps) {
-  const { formatXAxis, formatTooltip, getXAxisInterval, isMobile } = useTimeFormat();
+  const [timeframeHours, setTimeframeHours] = useState<number>(168);
+  
+  const dayRange = timeframeHours / 24;
+  const { formatXAxis, formatTooltip, getXAxisInterval, isMobile } = useTimeFormat('days', dayRange);
   
   const latestTest = cognitiveTests.length > 0 
     ? [...cognitiveTests].sort((a, b) => b.timestamp - a.timestamp)[0]
@@ -26,12 +31,16 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
 
   const chartData = useMemo(() => {
     const now = Date.now();
-    const startTime = subDays(now, 7).getTime();
+    const startTime = now - (timeframeHours * 3600 * 1000);
     const endTime = now;
 
+    const pointsPerDay = timeframeHours <= 48 ? 24 : 12;
+    const totalPoints = Math.ceil((timeframeHours / 24) * pointsPerDay);
+    const interval = (endTime - startTime) / totalPoints;
+
     const timePoints: number[] = [];
-    for (let i = 0; i <= 168; i++) {
-      timePoints.push(startTime + (i * 3600 * 1000));
+    for (let i = 0; i <= totalPoints; i++) {
+      timePoints.push(startTime + (i * interval));
     }
 
     const data = timePoints.map(time => {
@@ -43,24 +52,28 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
       medications.forEach(med => {
         const medDoses = doses.filter(d => d.medicationId === med.id);
         const curve = generateConcentrationCurve(med, medDoses, time, time, 1);
-        if (curve.length > 0) {
+        if (curve.length > 0 && curve[0].concentration > 0.01) {
           dataPoint[`${med.name}_concentration`] = curve[0].concentration;
+        } else {
+          dataPoint[`${med.name}_concentration`] = null;
         }
       });
 
       const closestMood = moodEntries
-        .filter(m => Math.abs(m.timestamp - time) < 3600 * 1000)
+        .filter(m => Math.abs(m.timestamp - time) < interval)
         .sort((a, b) => Math.abs(a.timestamp - time) - Math.abs(b.timestamp - time))[0];
       
       if (closestMood) {
         dataPoint.mood = closestMood.moodScore;
+      } else {
+        dataPoint.mood = null;
       }
 
       return dataPoint;
     });
 
     return data;
-  }, [medications, doses, moodEntries]);
+  }, [medications, doses, moodEntries, timeframeHours]);
 
   const colors = ['#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ef4444'];
   
@@ -134,18 +147,49 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
         </Card>
       </div>
 
+      {medications.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <CardTitle>Medication Levels & Mood</CardTitle>
+                <CardDescription>
+                  Serum concentration and mood tracking over time
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="timeframe" className="text-sm whitespace-nowrap">Timeframe:</Label>
+                <Select value={timeframeHours.toString()} onValueChange={(v) => setTimeframeHours(parseInt(v))}>
+                  <SelectTrigger id="timeframe" className="w-[140px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="24">Last 24 hours</SelectItem>
+                    <SelectItem value="48">Last 2 days</SelectItem>
+                    <SelectItem value="72">Last 3 days</SelectItem>
+                    <SelectItem value="168">Last 7 days</SelectItem>
+                    <SelectItem value="336">Last 14 days</SelectItem>
+                    <SelectItem value="720">Last 30 days</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </CardHeader>
+        </Card>
+      )}
+
       {medications.length > 0 && medications.map((medication, idx) => {
         const medDoses = doses.filter(d => d.medicationId === medication.id);
         
         const medChartData = chartData.map(point => ({
           ...point,
-          concentration: point[`${medication.name}_concentration`] || 0,
+          concentration: point[`${medication.name}_concentration`],
           mood: point.mood
         }));
 
         const concentrationValues = medChartData
           .map(d => d.concentration)
-          .filter(c => c > 0);
+          .filter(c => c !== null && c > 0);
         
         const medMaxConcentration = concentrationValues.length > 0 
           ? Math.max(...concentrationValues)
@@ -164,15 +208,21 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
         return (
           <Card key={medication.id}>
             <CardHeader>
-              <CardTitle>{medication.name} - Concentration & Mood</CardTitle>
+              <CardTitle>{medication.name}</CardTitle>
               <CardDescription>
-                Last 7 days - Mood (left axis) and serum concentration (right axis)
+                Concentration curve with mood overlay
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="h-[300px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={medChartData}>
+                    <defs>
+                      <linearGradient id={`gradient-${medication.id}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={colors[idx % colors.length]} stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor={colors[idx % colors.length]} stopOpacity={0.05}/>
+                      </linearGradient>
+                    </defs>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                     <XAxis 
                       dataKey="timestamp" 
@@ -206,6 +256,7 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
                         return point ? formatTooltip(point.time) : label;
                       }}
                       formatter={(value: any, name: string) => {
+                        if (value === null || value === undefined) return ['No data', name];
                         if (name === 'Mood') return [value?.toFixed(1) + '/10', name];
                         if (name.includes('ng/mL')) return [value?.toFixed(2) + ' ng/mL', medication.name];
                         return [value, name];
@@ -221,18 +272,18 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
                       strokeWidth={3}
                       name="Mood"
                       dot={{ r: 4 }}
-                      connectNulls
+                      connectNulls={false}
                     />
                     
-                    <Line
+                    <Area
                       yAxisId="right"
                       type="monotone"
                       dataKey="concentration"
                       stroke={colors[idx % colors.length]}
+                      fill={`url(#gradient-${medication.id})`}
                       strokeWidth={2}
                       name={`${medication.name} (ng/mL)`}
-                      dot={false}
-                      connectNulls
+                      connectNulls={false}
                     />
                   </LineChart>
                 </ResponsiveContainer>
