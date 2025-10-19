@@ -1,3 +1,14 @@
+import { useState } from 'react';
+import { useKV } from '@github/spark/hooks';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
+import { Toaster } from '@/shared/ui/sonner';
+import { ChartLine, Pill, Smiley, Brain } from '@phosphor-icons/react';
+import DashboardPage from '@/features/analytics/pages/DashboardPage';
+import MedicationsPage from '@/features/medications/pages/MedicationsPage';
+import MoodPage from '@/features/mood/pages/MoodPage';
+import CognitivePage from '@/features/cognitive/pages/CognitivePage';
+import AnalyticsPage from '@/features/analytics/pages/AnalyticsPage';
+import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from '@/shared/types';
 import { useEffect, useMemo, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Toaster } from '@/components/ui/sonner';
@@ -84,22 +95,34 @@ function App() {
           </TabsList>
 
           <TabsContent value="dashboard" className="space-y-6">
+            <DashboardPage
+              medications={safeMedications}
+              doses={safeDoses}
+              moodEntries={safeMoodEntries}
+              cognitiveTests={safeCognitiveTests}
+            />
             <Dashboard />
           </TabsContent>
 
           <TabsContent value="medications" className="space-y-6">
-            <MedicationsView />
+            <MedicationsPage />
           </TabsContent>
 
           <TabsContent value="mood" className="space-y-6">
-            <MoodView />
+            <MoodPage />
           </TabsContent>
 
           <TabsContent value="cognitive" className="space-y-6">
-            <CognitiveView />
+            <CognitivePage />
           </TabsContent>
 
           <TabsContent value="analytics" className="space-y-6">
+            <AnalyticsPage
+              medications={safeMedications}
+              doses={safeDoses}
+              moodEntries={safeMoodEntries}
+              cognitiveTests={safeCognitiveTests}
+            />
             <AnalyticsView />
           </TabsContent>
         </Tabs>
