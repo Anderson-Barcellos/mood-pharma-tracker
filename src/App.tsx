@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { useKV } from '@github/spark/hooks';
+import { useEffect, useMemo, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Toaster } from '@/components/ui/sonner';
 import { ChartLine, Pill, Smiley, Brain } from '@phosphor-icons/react';
@@ -8,23 +7,46 @@ import MedicationsView from './components/MedicationsView';
 import MoodView from './components/MoodView';
 import CognitiveView from './components/CognitiveView';
 import AnalyticsView from './components/AnalyticsView';
-import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from './lib/types';
+import { migrateLegacyData } from '@/core/database/db';
+import { useMedications } from '@/hooks/use-medications';
+import { useDoses } from '@/hooks/use-doses';
+import { useMoodEntries } from '@/hooks/use-mood-entries';
+import { useCognitiveTests } from '@/hooks/use-cognitive-tests';
 
 function App() {
-  const [medications] = useKV<Medication[]>('medications', []);
-  const [doses] = useKV<MedicationDose[]>('doses', []);
-  const [moodEntries] = useKV<MoodEntry[]>('moodEntries', []);
-  const [cognitiveTests] = useKV<CognitiveTest[]>('cognitiveTests', []);
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [migrationPending, setMigrationPending] = useState(true);
 
-  const safeMedications = medications || [];
-  const safeDoses = doses || [];
-  const safeMoodEntries = moodEntries || [];
-  const safeCognitiveTests = cognitiveTests || [];
+  const { isLoading: medicationsLoading } = useMedications();
+  const { isLoading: dosesLoading } = useDoses();
+  const { isLoading: moodLoading } = useMoodEntries();
+  const { isLoading: cognitiveLoading } = useCognitiveTests();
+
+  useEffect(() => {
+    let cancelled = false;
+    migrateLegacyData().finally(() => {
+      if (!cancelled) {
+        setMigrationPending(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const isInitializing = useMemo(() => {
+    return migrationPending || medicationsLoading || dosesLoading || moodLoading || cognitiveLoading;
+  }, [migrationPending, medicationsLoading, dosesLoading, moodLoading, cognitiveLoading]);
 
   return (
     <div className="min-h-screen bg-background">
       <Toaster />
+      {isInitializing && (
+        <div className="w-full bg-muted text-muted-foreground text-sm py-2 text-center">
+          Sincronizando dados locais...
+        </div>
+      )}
       <header className="border-b border-border bg-card">
         <div className="container mx-auto px-4 py-4">
           <h1 className="text-3xl font-bold tracking-tight text-foreground">
@@ -62,12 +84,7 @@ function App() {
           </TabsList>
 
           <TabsContent value="dashboard" className="space-y-6">
-            <Dashboard 
-              medications={safeMedications}
-              doses={safeDoses}
-              moodEntries={safeMoodEntries}
-              cognitiveTests={safeCognitiveTests}
-            />
+            <Dashboard />
           </TabsContent>
 
           <TabsContent value="medications" className="space-y-6">
@@ -83,12 +100,7 @@ function App() {
           </TabsContent>
 
           <TabsContent value="analytics" className="space-y-6">
-            <AnalyticsView 
-              medications={safeMedications}
-              doses={safeDoses}
-              moodEntries={safeMoodEntries}
-              cognitiveTests={safeCognitiveTests}
-            />
+            <AnalyticsView />
           </TabsContent>
         </Tabs>
       </main>

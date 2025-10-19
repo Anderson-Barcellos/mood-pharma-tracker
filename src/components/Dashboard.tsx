@@ -3,22 +3,22 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Plus, Pill, Smiley, Brain } from '@phosphor-icons/react';
-import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from '../lib/types';
 import DoseLogger from './DoseLogger';
 import QuickMoodLog from './QuickMoodLog';
 import { useMemo, useState } from 'react';
 import { LineChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { generateConcentrationCurve } from '@/lib/pharmacokinetics';
 import { useTimeFormat } from '@/hooks/use-time-format';
+import { useMedications } from '@/hooks/use-medications';
+import { useDoses } from '@/hooks/use-doses';
+import { useMoodEntries } from '@/hooks/use-mood-entries';
+import { useCognitiveTests } from '@/hooks/use-cognitive-tests';
 
-interface DashboardProps {
-  medications: Medication[];
-  doses: MedicationDose[];
-  moodEntries: MoodEntry[];
-  cognitiveTests: CognitiveTest[];
-}
-
-export default function Dashboard({ medications, doses, moodEntries, cognitiveTests }: DashboardProps) {
+export default function Dashboard() {
+  const { medications } = useMedications();
+  const { doses } = useDoses();
+  const { moodEntries } = useMoodEntries();
+  const { cognitiveTests } = useCognitiveTests();
   const [timeframeHours, setTimeframeHours] = useState<number>(168);
   
   const dayRange = timeframeHours / 24;
