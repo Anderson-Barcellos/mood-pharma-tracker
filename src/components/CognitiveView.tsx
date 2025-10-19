@@ -5,9 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Brain, Play, Check, X } from '@phosphor-icons/react';
 import type { CognitiveTest, Matrix } from '../lib/types';
 import { v4 as uuidv4 } from 'uuid';
-import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Bar, ComposedChart } from 'recharts';
+import { XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Bar, ComposedChart } from 'recharts';
 import { safeFormat } from '@/lib/utils';
 
 export default function CognitiveView() {
@@ -18,7 +17,6 @@ export default function CognitiveView() {
   const [matrices, setMatrices] = useState<Matrix[]>([]);
   const [startTime, setStartTime] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [showResults, setShowResults] = useState(false);
 
   const generateMatrix = async (): Promise<Matrix | null> => {
     const prompt = `You are an expert in psychometrics creating Raven's Progressive Matrices.
