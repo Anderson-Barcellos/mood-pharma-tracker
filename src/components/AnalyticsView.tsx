@@ -2,10 +2,10 @@ import { useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from '../lib/types';
-import { generateConcentrationCurve } from '../lib/pharmacokinetics';
 import { ComposedChart, Line, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area } from 'recharts';
+import { generateConcentrationCurve } from '@/lib/pharmacokinetics';
 import { format, subDays } from 'date-fns';
+import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from '@/lib/types';
 import { useTimeFormat } from '@/hooks/use-time-format';
 
 interface AnalyticsViewProps {
@@ -16,73 +16,87 @@ interface AnalyticsViewProps {
 }
 
 export default function AnalyticsView({ medications, doses, moodEntries, cognitiveTests }: AnalyticsViewProps) {
-  const [selectedMedicationId, setSelectedMedicationId] = useState<string>('');
-  const [dayRange, setDayRange] = useState(14);
-  const { formatXAxis, formatTooltip, getXAxisInterval, isMobile } = useTimeFormat();
+  const [selectedMedicationId, setSelectedMedicationId] = useState<string>(
+    medications.length > 0 ? medications[0].id : ''
+  );
+  const [dayRange, setDayRange] = useState(7);
+  const { formatXAxis, formatTooltip, getXAxisInterval } = useTimeFormat();
 
-  const selectedMedication = medications?.find(m => m.id === selectedMedicationId);
+  const selectedMedication = medications.find(m => m.id === selectedMedicationId);
 
   const chartData = useMemo(() => {
-    if (!selectedMedication || !doses) return [];
+    if (!selectedMedication) return [];
 
-    const endTime = Date.now();
-    const startTime = endTime - (dayRange * 24 * 60 * 60 * 1000);
+    const now = Date.now();
+    const startTime = subDays(now, dayRange).getTime();
+    const endTime = now;
 
-    const medicationDoses = doses.filter(d => 
-      d.medicationId === selectedMedicationId && 
-      d.timestamp >= startTime
-    );
+    const timePoints: number[] = [];
+    const hoursInRange = dayRange * 24;
+    for (let i = 0; i <= hoursInRange; i++) {
+      timePoints.push(startTime + (i * 3600 * 1000));
+    }
 
-    if (medicationDoses.length === 0) return [];
-
-    const curve = generateConcentrationCurve(
+    const medDoses = doses.filter(d => d.medicationId === selectedMedication.id);
+    const concentrationCurve = generateConcentrationCurve(
       selectedMedication,
-      medicationDoses,
+      medDoses,
       startTime,
       endTime,
-      100
+      timePoints.length
     );
 
-    const moodData = moodEntries?.filter(m => 
-      m.timestamp >= startTime && m.timestamp <= endTime
-    ) || [];
-
-    const cognitiveData = cognitiveTests?.filter(t => 
-      t.timestamp >= startTime && t.timestamp <= endTime
-    ) || [];
-
-    return curve.map(point => {
-      const nearbyMood = moodData.find(m => 
-        Math.abs(m.timestamp - point.time) < 3600000
-      );
-      
-      const nearbyCognitive = cognitiveData.find(t => 
-        Math.abs(t.timestamp - point.time) < 3600000
-      );
-
-      return {
-        time: point.time,
-        concentration: point.concentration,
-        mood: nearbyMood?.moodScore,
-        cognitiveScore: nearbyCognitive?.totalScore
+    const data = timePoints.map((time, idx) => {
+      const dataPoint: any = {
+        time,
+        timestamp: time,
+        concentration: concentrationCurve[idx]?.concentration || 0
       };
+
+      const nearbyMoods = moodEntries.filter(
+        m => Math.abs(m.timestamp - time) < 3600 * 1000
+      );
+      if (nearbyMoods.length > 0) {
+        const closestMood = nearbyMoods.sort(
+          (a, b) => Math.abs(a.timestamp - time) - Math.abs(b.timestamp - time)
+        )[0];
+        dataPoint.mood = closestMood.moodScore;
+        dataPoint.anxiety = closestMood.anxietyLevel;
+        dataPoint.energy = closestMood.energyLevel;
+        dataPoint.focus = closestMood.focusLevel;
+      }
+
+      const nearbyTests = cognitiveTests.filter(
+        t => Math.abs(t.timestamp - time) < 3600 * 1000
+      );
+      if (nearbyTests.length > 0) {
+        const closestTest = nearbyTests.sort(
+          (a, b) => Math.abs(a.timestamp - time) - Math.abs(b.timestamp - time)
+        )[0];
+        dataPoint.cognitiveScore = closestTest.totalScore;
+        dataPoint.accuracy = closestTest.accuracy * 100;
+      }
+
+      return dataPoint;
     });
-  }, [selectedMedication, doses, moodEntries, cognitiveTests, selectedMedicationId, dayRange]);
+
+    return data;
+  }, [selectedMedication, dayRange, doses, moodEntries, cognitiveTests]);
 
   const concentrationRange = useMemo(() => {
     if (chartData.length === 0) return { min: 0, max: 100 };
-    
+
     const concentrations = chartData
       .map(d => d.concentration)
       .filter(c => c > 0);
-    
+
     if (concentrations.length === 0) return { min: 0, max: 100 };
-    
+
     const min = Math.min(...concentrations);
     const max = Math.max(...concentrations);
     const range = max - min;
     const padding = range * 0.1;
-    
+
     return {
       min: Math.max(0, min - padding),
       max: max + padding
@@ -104,6 +118,18 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
 
     return { avgMood, avgCognitive };
   }, [moodEntries, cognitiveTests]);
+
+  const moodScatterData = useMemo(() => {
+    return chartData
+      .filter(d => d.mood !== undefined)
+      .map(d => ({ time: d.time, value: d.mood }));
+  }, [chartData]);
+
+  const cognitiveScatterData = useMemo(() => {
+    return chartData
+      .filter(d => d.cognitiveScore !== undefined)
+      .map(d => ({ time: d.time, value: d.cognitiveScore }));
+  }, [chartData]);
 
   return (
     <div className="space-y-6">
@@ -142,207 +168,120 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="3">Last 3 days</SelectItem>
                   <SelectItem value="7">Last 7 days</SelectItem>
                   <SelectItem value="14">Last 14 days</SelectItem>
                   <SelectItem value="30">Last 30 days</SelectItem>
-                  <SelectItem value="90">Last 90 days</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
+
+          {stats && (
+            <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+              <div>
+                <p className="text-sm text-muted-foreground">Avg Mood (recent)</p>
+                <p className="text-2xl font-bold">{stats.avgMood.toFixed(1)}/10</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Avg Cognitive (recent)</p>
+                <p className="text-2xl font-bold">{stats.avgCognitive.toFixed(1)}</p>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {stats && (
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Average Mood</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.avgMood.toFixed(1)}/10</div>
-              <p className="text-xs text-muted-foreground">Last 10 entries</p>
-            </CardContent>
-          </Card>
+      {selectedMedication && chartData.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Correlation Analysis</CardTitle>
+            <CardDescription>
+              {selectedMedication.name} concentration vs. mood & cognitive performance
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[400px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis
+                    dataKey="timestamp"
+                    tickFormatter={formatXAxis}
+                    tick={{ fontSize: 11 }}
+                    interval={getXAxisInterval(chartData.length)}
+                  />
+                  <YAxis
+                    yAxisId="left"
+                    label={{ value: 'Mood/Cognitive', angle: -90, position: 'insideLeft', style: { fontSize: 12 } }}
+                    domain={[0, 10]}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    label={{ value: 'Concentration (ng/mL)', angle: 90, position: 'insideRight', style: { fontSize: 12 } }}
+                    domain={[concentrationRange.min, concentrationRange.max]}
+                    tick={{ fontSize: 11 }}
+                    tickFormatter={(value) => value.toFixed(1)}
+                  />
+                  <Tooltip
+                    labelFormatter={(label) => {
+                      const point = chartData.find(d => d.timestamp === label);
+                      return point ? formatTooltip(point.time) : label;
+                    }}
+                    contentStyle={{
+                      backgroundColor: 'hsl(var(--card))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px'
+                    }}
+                  />
+                  <Legend />
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Average Cognitive Score</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.avgCognitive.toFixed(1)}</div>
-              <p className="text-xs text-muted-foreground">Last 5 tests</p>
-            </CardContent>
-          </Card>
+                  <Area
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey="concentration"
+                    fill="hsl(var(--primary) / 0.1)"
+                    stroke="hsl(var(--primary))"
+                    strokeWidth={2}
+                    name="Concentration"
+                  />
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Total Data Points</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{(moodEntries?.length || 0) + (cognitiveTests?.length || 0)}</div>
-              <p className="text-xs text-muted-foreground">Mood + cognitive entries</p>
-            </CardContent>
-          </Card>
-        </div>
+                  <Scatter
+                    yAxisId="left"
+                    data={moodScatterData}
+                    dataKey="value"
+                    fill="hsl(var(--accent))"
+                    name="Mood Score"
+                  />
+
+                  <Scatter
+                    yAxisId="left"
+                    data={cognitiveScatterData}
+                    dataKey="value"
+                    fill="hsl(var(--cognitive))"
+                    name="Cognitive Score"
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
-      {!selectedMedicationId ? (
+      {medications.length === 0 && (
         <Card className="border-dashed">
-          <CardContent className="py-12">
-            <div className="text-center space-y-2">
-              <p className="text-muted-foreground">Select a medication to view correlation analysis</p>
-            </div>
+          <CardHeader>
+            <CardTitle>No Medications</CardTitle>
+            <CardDescription>Add medications to view analytics</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              Analytics requires at least one medication with dose records.
+            </p>
           </CardContent>
         </Card>
-      ) : chartData.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="py-12">
-            <div className="text-center space-y-2">
-              <p className="text-muted-foreground">No dose data available for this medication in the selected time range</p>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Mood vs. Concentration</CardTitle>
-              <CardDescription>
-                {selectedMedication?.name} serum levels (right) and mood scores (left)
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[300px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                    <XAxis 
-                      dataKey="time" 
-                      tickFormatter={formatXAxis}
-                      tick={{ fontSize: 11 }}
-                      interval={getXAxisInterval(chartData.length)}
-                    />
-                    <YAxis 
-                      yAxisId="left"
-                      label={{ value: 'Mood Score', angle: -90, position: 'insideLeft', style: { fontSize: 12 } }}
-                      domain={[0, 10]}
-                      tick={{ fontSize: 11 }}
-                    />
-                    <YAxis 
-                      yAxisId="right" 
-                      orientation="right"
-                      label={{ value: 'Concentration (ng/mL)', angle: 90, position: 'insideRight', style: { fontSize: 12 } }}
-                      domain={[concentrationRange.min, concentrationRange.max]}
-                      tick={{ fontSize: 11 }}
-                      tickFormatter={(value) => value.toFixed(1)}
-                    />
-                    <Tooltip 
-                      labelFormatter={formatTooltip}
-                      formatter={(value: any, name: string) => {
-                        if (name === 'Concentration') return [value.toFixed(2) + ' ng/mL', name];
-                        if (name === 'Mood') return [value.toFixed(1) + '/10', name];
-                        return [value, name];
-                      }}
-                      contentStyle={{ 
-                        backgroundColor: 'hsl(var(--card))',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '8px'
-                      }}
-                    />
-                    <Legend />
-                    <Line 
-                      yAxisId="left"
-                      type="monotone" 
-                      dataKey="mood" 
-                      stroke="#22c55e"
-                      strokeWidth={3}
-                      name="Mood"
-                      dot={{ r: 4 }}
-                      connectNulls
-                    />
-                    <Area 
-                      yAxisId="right"
-                      type="monotone" 
-                      dataKey="concentration" 
-                      stroke="hsl(var(--primary))" 
-                      fill="hsl(var(--primary))"
-                      fillOpacity={0.2}
-                      strokeWidth={2}
-                      name="Concentration"
-                    />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Cognitive Performance vs. Concentration</CardTitle>
-              <CardDescription>
-                {selectedMedication?.name} serum levels (right) and cognitive test scores (left)
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[300px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                    <XAxis 
-                      dataKey="time" 
-                      tickFormatter={formatXAxis}
-                      tick={{ fontSize: 11 }}
-                      interval={getXAxisInterval(chartData.length)}
-                    />
-                    <YAxis 
-                      yAxisId="left"
-                      label={{ value: 'Cognitive Score', angle: -90, position: 'insideLeft', style: { fontSize: 12 } }}
-                      domain={[0, 100]}
-                      tick={{ fontSize: 11 }}
-                    />
-                    <YAxis 
-                      yAxisId="right" 
-                      orientation="right"
-                      label={{ value: 'Concentration (ng/mL)', angle: 90, position: 'insideRight', style: { fontSize: 12 } }}
-                      domain={[concentrationRange.min, concentrationRange.max]}
-                      tick={{ fontSize: 11 }}
-                      tickFormatter={(value) => value.toFixed(1)}
-                    />
-                    <Tooltip 
-                      labelFormatter={formatTooltip}
-                      formatter={(value: any, name: string) => {
-                        return [value, name];
-                      }}
-                      contentStyle={{ 
-                        backgroundColor: 'hsl(var(--card))',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '8px'
-                      }}
-                    />
-                    <Legend />
-                    <Scatter 
-                      yAxisId="left"
-                      dataKey="cognitiveScore" 
-                      fill="hsl(var(--cognitive))"
-                      name="Cognitive Score"
-                    />
-                    <Area 
-                      yAxisId="right"
-                      type="monotone" 
-                      dataKey="concentration" 
-                      stroke="hsl(var(--primary))" 
-                      fill="hsl(var(--primary))"
-                      fillOpacity={0.2}
-                      strokeWidth={2}
-                      name="Concentration"
-                    />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
       )}
     </div>
   );
