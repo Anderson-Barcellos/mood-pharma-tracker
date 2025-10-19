@@ -6,6 +6,8 @@ import { Brain, Play } from '@phosphor-icons/react';
 import type { CognitiveTest, Matrix } from '../lib/types';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
+import { XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Bar, Line, ComposedChart } from 'recharts';
+import { safeFormat } from '@/lib/utils';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Bar, ComposedChart } from 'recharts';
 import { cn, safeFormat } from '@/lib/utils';
 
@@ -17,7 +19,6 @@ export default function CognitiveView() {
   const [matrices, setMatrices] = useState<Matrix[]>([]);
   const [startTime, setStartTime] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [showResults, setShowResults] = useState(false);
 
   const generateMatrix = async (): Promise<Matrix | null> => {
     const prompt = `You are an expert in psychometrics creating Raven's Progressive Matrices.
@@ -93,6 +94,8 @@ Return ONLY valid JSON, no markdown or additional text.`;
     setTestInProgress(true);
     setCurrentMatrixIndex(0);
     setMatrices([]);
+    setStartTime(Date.now());
+    
     setShowResults(false);
     setIsLoading(true);
     const matrix = await generateMatrix();
@@ -172,7 +175,6 @@ Return ONLY valid JSON, no markdown or additional text.`;
     };
 
     setCognitiveTests((current) => [...(current || []), test]);
-    setShowResults(true);
     setTestInProgress(false);
     
     toast.success('Test completed!', {
