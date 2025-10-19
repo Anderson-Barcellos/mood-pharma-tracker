@@ -2,9 +2,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Plus, Pill, Smiley, Brain, TrendUp } from '@phosphor-icons/react';
+import { Plus, Pill, Smiley, Brain } from '@phosphor-icons/react';
 import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from '../lib/types';
-import { format, subDays, subHours } from 'date-fns';
 import DoseLogger from './DoseLogger';
 import QuickMoodLog from './QuickMoodLog';
 import { useMemo, useState } from 'react';
@@ -23,7 +22,7 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
   const [timeframeHours, setTimeframeHours] = useState<number>(168);
   
   const dayRange = timeframeHours / 24;
-  const { formatXAxis, formatTooltip, getXAxisInterval, isMobile } = useTimeFormat('days', dayRange);
+  const { formatXAxis, formatTooltip, getXAxisInterval } = useTimeFormat('days', dayRange);
   
   const latestTest = cognitiveTests.length > 0 
     ? [...cognitiveTests].sort((a, b) => b.timestamp - a.timestamp)[0]
@@ -76,17 +75,6 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
   }, [medications, doses, moodEntries, timeframeHours]);
 
   const colors = ['#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ef4444'];
-  
-  const maxConcentration = useMemo(() => {
-    let max = 0;
-    chartData.forEach(point => {
-      medications.forEach(med => {
-        const val = point[`${med.name}_concentration`];
-        if (val && val > max) max = val;
-      });
-    });
-    return max || 100;
-  }, [chartData, medications]);
 
   return (
     <div className="space-y-6">
@@ -179,8 +167,6 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
       )}
 
       {medications.length > 0 && medications.map((medication, idx) => {
-        const medDoses = doses.filter(d => d.medicationId === medication.id);
-        
         const medChartData = chartData.map(point => ({
           ...point,
           concentration: point[`${medication.name}_concentration`],

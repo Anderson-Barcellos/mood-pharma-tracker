@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useKV } from '@github/spark/hooks';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,7 +8,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Pencil, Trash } from '@phosphor-icons/react';
 import type { Medication, MedicationDose } from '../lib/types';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
 import { safeFormat } from '@/lib/utils';
 
 interface MedicationDosesViewProps {
@@ -32,7 +31,6 @@ export default function MedicationDosesView({ medication, open, onOpenChange }: 
   const handleEdit = (dose: MedicationDose) => {
     setEditingDose(dose);
     setEditAmount(dose.doseAmount.toString());
-    const date = new Date(dose.timestamp);
     setEditDate(safeFormat(dose.timestamp, 'yyyy-MM-dd', ''));
     setEditTime(safeFormat(dose.timestamp, 'HH:mm', ''));
     setEditDialogOpen(true);
