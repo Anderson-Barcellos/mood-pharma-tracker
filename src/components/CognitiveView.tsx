@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useKV } from '@github/spark/hooks';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -6,6 +6,29 @@ import { Brain, Play } from '@phosphor-icons/react';
 import type { CognitiveTest, Matrix } from '../lib/types';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
+import {
+  ResponsiveContainer,
+  ComposedChart,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  Bar,
+  Line
+} from 'recharts';
+import { safeFormat } from '@/lib/utils';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import {
+  requestMatrix,
+  getFallbackMatrices,
+  hasGeminiSupport,
+  hasSparkSupport,
+  MatrixGenerationError,
+  type MatrixSource
+} from '@/lib/gemini';
+
+const matrixPrompt = `You are an expert in psychometrics creating Raven's Progressive Matrices.
 import { XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Bar, Line, ComposedChart } from 'recharts';
 import { safeFormat } from '@/lib/utils';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Bar, ComposedChart } from 'recharts';
@@ -55,7 +78,71 @@ TECHNICAL REQUIREMENTS:
 
 Return ONLY valid JSON, no markdown or additional text.`;
 
+type GenerateMatrixOptions = {
+  offline?: boolean;
+};
+
+export default function CognitiveView() {
+  const [cognitiveTests, setCognitiveTests] = useKV<CognitiveTest[]>('cognitiveTests', []);
+  const [testInProgress, setTestInProgress] = useState(false);
+  const [currentMatrixIndex, setCurrentMatrixIndex] = useState(0);
+  const [currentMatrix, setCurrentMatrix] = useState<Matrix | null>(null);
+  const [matrices, setMatrices] = useState<Matrix[]>([]);
+  const [startTime, setStartTime] = useState<number>(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [offlineMode, setOfflineMode] = useState(false);
+  const [offlineIndex, setOfflineIndex] = useState(0);
+  const [matrixSource, setMatrixSource] = useState<MatrixSource | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [showOfflinePrompt, setShowOfflinePrompt] = useState(false);
+
+  const fallbackMatrices = useMemo(() => getFallbackMatrices(), []);
+  const fallbackCount = fallbackMatrices.length;
+  const [offlineRemaining, setOfflineRemaining] = useState(fallbackCount);
+
+  const generateMatrix = async ({ offline = offlineMode }: GenerateMatrixOptions = {}): Promise<Matrix | null> => {
+    if (!offline && !hasSparkSupport() && !hasGeminiSupport()) {
+      setAiError('A IA nativa não tá disponível no navegador, mas temos matrizes cacheadas pra quebrar o galho.');
+      setShowOfflinePrompt(true);
+      return null;
+    }
+
     try {
+      const result = await requestMatrix(matrixPrompt, {
+        allowFallback: offline,
+        fallbackIndex: offline ? offlineIndex : undefined
+      });
+
+      if (result.source === 'fallback' && !offline) {
+        setAiError('Bah, nenhum provedor de IA respondeu agora. Quer usar o teste cacheado?');
+        setShowOfflinePrompt(true);
+        return null;
+      }
+
+      if (result.source === 'fallback' && fallbackCount > 0) {
+        setOfflineIndex((prev) => (prev + 1) % fallbackCount);
+        setOfflineRemaining((prev) => (prev > 0 ? prev - 1 : 0));
+      }
+
+      if (result.source !== 'fallback') {
+        setOfflineRemaining(fallbackCount);
+      }
+
+      setMatrixSource(result.source);
+      setAiError(null);
+      setShowOfflinePrompt(false);
+
+      return {
+        matrixId: result.id ?? uuidv4(),
+        svgContent: result.matrixSVG,
+        correctAnswer: result.correctAnswer,
+        userAnswer: -1,
+        responseTime: 0,
+        wasCorrect: false,
+        explanation: result.explanation,
+        options: result.options,
+        patterns: result.patterns,
+        source: result
       const response = await window.spark.llm(prompt, 'gpt-4o', true);
       const data = JSON.parse(response);
 
@@ -84,21 +171,45 @@ Return ONLY valid JSON, no markdown or additional text.`;
         explanation: typeof data.explanation === 'string' ? data.explanation : 'No explanation provided.'
       };
     } catch (error) {
+      if (error instanceof MatrixGenerationError) {
+        if (error.code === 'FALLBACK_REQUIRED' || error.code === 'GEMINI_UNAVAILABLE' || error.code === 'SPARK_UNAVAILABLE') {
+          setAiError('Bah, a IA tá fora do ar agora. Tu pode cancelar ou rodar um teste cacheado.');
+          setShowOfflinePrompt(true);
+          return null;
+        }
+
+        toast.error('Falhou ao gerar a matriz cognitiva', {
+          description: error.message
+        });
+        return null;
+      }
+
       console.error('Error generating matrix:', error);
       toast.error('Failed to generate cognitive test matrix');
       return null;
     }
   };
 
-  const startTest = async () => {
+  const startTest = async ({ offline = offlineMode }: GenerateMatrixOptions = {}) => {
+    setOfflineMode(offline);
+    if (offline) {
+      setOfflineIndex(0);
+      setOfflineRemaining(fallbackCount);
+    }
+
+    setMatrixSource(null);
+    setAiError(null);
+    setShowOfflinePrompt(false);
+
     setTestInProgress(true);
     setCurrentMatrixIndex(0);
     setMatrices([]);
     setStartTime(Date.now());
+
     
     setShowResults(false);
     setIsLoading(true);
-    const matrix = await generateMatrix();
+    const matrix = await generateMatrix({ offline });
     setIsLoading(false);
 
     if (matrix) {
@@ -106,8 +217,20 @@ Return ONLY valid JSON, no markdown or additional text.`;
       setStartTime(Date.now());
     } else {
       setTestInProgress(false);
-      toast.error('Failed to start test');
+      setOfflineMode(offline);
     }
+  };
+
+  const handleLoadOffline = () => {
+    if (testInProgress) return;
+    startTest({ offline: true });
+  };
+
+  const handleCancelOffline = () => {
+    setOfflineMode(false);
+    setShowOfflinePrompt(false);
+    setAiError(null);
+    setOfflineRemaining(fallbackCount);
   };
 
   const handleAnswer = async (answerIndex: number) => {
@@ -156,11 +279,15 @@ Return ONLY valid JSON, no markdown or additional text.`;
 
   const finishTest = (completedMatrices: Matrix[]) => {
     const totalCorrect = completedMatrices.filter(m => m.wasCorrect).length;
-    const accuracy = totalCorrect / completedMatrices.length;
-    const avgResponseTime = completedMatrices.reduce((sum, m) => sum + m.responseTime, 0) / completedMatrices.length;
-    
+    const accuracy = completedMatrices.length > 0 ? totalCorrect / completedMatrices.length : 0;
+    const avgResponseTime =
+      completedMatrices.length > 0
+        ? completedMatrices.reduce((sum, m) => sum + m.responseTime, 0) / completedMatrices.length
+        : 0;
+
     const totalScore = completedMatrices.reduce((sum, m) => {
-      const matrixScore = (m.wasCorrect ? 1 : 0) * (100 / (1 + Math.log10(m.responseTime)));
+      const safeTime = Math.max(m.responseTime, 0.1);
+      const matrixScore = (m.wasCorrect ? 1 : 0) * (100 / (1 + Math.log10(safeTime)));
       return sum + matrixScore;
     }, 0);
 
@@ -176,7 +303,7 @@ Return ONLY valid JSON, no markdown or additional text.`;
 
     setCognitiveTests((current) => [...(current || []), test]);
     setTestInProgress(false);
-    
+
     toast.success('Test completed!', {
       description: `Score: ${totalScore.toFixed(1)} | Accuracy: ${(accuracy * 100).toFixed(0)}%`
     });
@@ -186,7 +313,7 @@ Return ONLY valid JSON, no markdown or additional text.`;
 
   const chartData = useMemo(() => {
     const sortedTests = [...(cognitiveTests || [])].sort((a, b) => a.timestamp - b.timestamp);
-    
+
     return sortedTests.map(test => ({
       timestamp: safeFormat(test.timestamp, 'HH:mm', 'N/A'),
       time: test.timestamp,
@@ -203,6 +330,15 @@ Return ONLY valid JSON, no markdown or additional text.`;
           <h2 className="text-2xl font-semibold tracking-tight">Cognitive Test in Progress</h2>
           <p className="text-muted-foreground">Matrix {currentMatrixIndex + 1} of 4</p>
         </div>
+
+        {matrixSource === 'fallback' && (
+          <Alert className="border-amber-500/40 bg-amber-500/10">
+            <AlertTitle>Modo offline ativado</AlertTitle>
+            <AlertDescription>
+              Bah, a IA tá fora do ar. Estamos usando o conjunto cacheado de matrizes (restam {offlineRemaining} de {fallbackCount}).
+            </AlertDescription>
+          </Alert>
+        )}
 
         {isLoading ? (
           <Card>
@@ -221,7 +357,7 @@ Return ONLY valid JSON, no markdown or additional text.`;
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="flex justify-center" dangerouslySetInnerHTML={{ __html: currentMatrix.svgContent }} />
-              
+
               <div className="grid grid-cols-3 gap-4 max-w-2xl mx-auto">
                 {currentMatrix.options.map((optionSvg, index) => {
                   const isSelected = currentMatrix.userAnswer === index;
@@ -350,7 +486,36 @@ Return ONLY valid JSON, no markdown or additional text.`;
               </ul>
             </div>
           </div>
-          <Button onClick={startTest} className="w-full" size="lg">
+
+          {aiError && (
+            <Alert className="border-destructive/40 bg-destructive/10">
+              <AlertTitle>IA indisponível</AlertTitle>
+              <AlertDescription>
+                {aiError}
+                <span className="mt-2 block text-xs text-muted-foreground">
+                  Temos {fallbackCount} matrizes cacheadas prontas pra rodar mesmo sem conexão com os provedores.
+                </span>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {showOfflinePrompt && (
+            <div className="flex flex-col gap-3 rounded-lg border border-border/60 bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">
+                Sem IA por enquanto. Quer carregar um teste cacheado ou deixar pra depois, índio velho?
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={handleCancelOffline} disabled={testInProgress}>
+                  Cancelar
+                </Button>
+                <Button onClick={handleLoadOffline} disabled={testInProgress}>
+                  Carregar teste cacheado
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <Button onClick={() => startTest({ offline: false })} className="w-full" size="lg" disabled={testInProgress}>
             <Play className="w-5 h-5 mr-2" />
             Start Cognitive Test
           </Button>
@@ -368,23 +533,20 @@ Return ONLY valid JSON, no markdown or additional text.`;
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis 
-                    dataKey="timestamp"
-                    tick={{ fontSize: 11 }}
-                  />
-                  <YAxis 
+                  <XAxis dataKey="timestamp" tick={{ fontSize: 11 }} />
+                  <YAxis
                     yAxisId="left"
                     tick={{ fontSize: 11 }}
                     label={{ value: 'Score', angle: -90, position: 'insideLeft', style: { fontSize: 12 } }}
                   />
-                  <YAxis 
+                  <YAxis
                     yAxisId="right"
                     orientation="right"
                     domain={[0, 100]}
                     tick={{ fontSize: 11 }}
                     label={{ value: 'Accuracy %', angle: 90, position: 'insideRight', style: { fontSize: 12 } }}
                   />
-                  <Tooltip 
+                  <Tooltip
                     labelFormatter={(label, payload) => {
                       if (payload && payload.length > 0) {
                         return safeFormat(payload[0].payload.time, 'MMM d, HH:mm', 'N/A');
@@ -397,29 +559,15 @@ Return ONLY valid JSON, no markdown or additional text.`;
                       if (name === 'Avg Response Time') return [value.toFixed(1) + 's', name];
                       return [value, name];
                     }}
-                    contentStyle={{ 
+                    contentStyle={{
                       backgroundColor: 'hsl(var(--card))',
                       border: '1px solid hsl(var(--border))',
                       borderRadius: '8px'
                     }}
                   />
                   <Legend />
-                  <Bar 
-                    yAxisId="left"
-                    dataKey="score" 
-                    fill="hsl(var(--cognitive))"
-                    name="Score"
-                    radius={[4, 4, 0, 0]}
-                  />
-                  <Line 
-                    yAxisId="right"
-                    type="monotone" 
-                    dataKey="accuracy" 
-                    stroke="#22c55e"
-                    strokeWidth={2}
-                    name="Accuracy"
-                    dot={{ r: 4 }}
-                  />
+                  <Bar yAxisId="left" dataKey="score" fill="hsl(var(--cognitive))" name="Score" radius={[4, 4, 0, 0]} />
+                  <Line yAxisId="right" type="monotone" dataKey="accuracy" stroke="#22c55e" strokeWidth={2} name="Accuracy" dot={{ r: 4 }} />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>

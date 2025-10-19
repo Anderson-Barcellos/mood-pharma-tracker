@@ -48,6 +48,9 @@ export interface Matrix {
   responseTime: number;
   wasCorrect: boolean;
   explanation: string;
+  options?: string[];
+  patterns?: string[];
+  source?: 'spark' | 'gemini' | 'fallback';
 }
 
 export interface CognitiveTest {
