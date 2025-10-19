@@ -2,12 +2,14 @@ import { useState, useMemo } from 'react';
 import { useKV } from '@github/spark/hooks';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Brain, Play, Check, X } from '@phosphor-icons/react';
+import { Brain, Play } from '@phosphor-icons/react';
 import type { CognitiveTest, Matrix } from '../lib/types';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 import { XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Bar, Line, ComposedChart } from 'recharts';
 import { safeFormat } from '@/lib/utils';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Bar, ComposedChart } from 'recharts';
+import { cn, safeFormat } from '@/lib/utils';
 
 export default function CognitiveView() {
   const [cognitiveTests, setCognitiveTests] = useKV<CognitiveTest[]>('cognitiveTests', []);
@@ -56,15 +58,30 @@ Return ONLY valid JSON, no markdown or additional text.`;
     try {
       const response = await window.spark.llm(prompt, 'gpt-4o', true);
       const data = JSON.parse(response);
-      
+
+      const options = Array.isArray(data.options)
+        ? data.options.filter((option: unknown) => typeof option === 'string')
+        : [];
+      const patterns = Array.isArray(data.patterns)
+        ? data.patterns.filter((pattern: unknown) => typeof pattern === 'string')
+        : [];
+
+      if (typeof data.matrixSVG !== 'string' || options.length === 0 || typeof data.correctAnswer !== 'number') {
+        throw new Error('Invalid matrix payload');
+      }
+
+      const boundedCorrectAnswer = Math.max(0, Math.min(options.length - 1, data.correctAnswer));
+
       return {
         matrixId: uuidv4(),
         svgContent: data.matrixSVG,
-        correctAnswer: data.correctAnswer,
+        options,
+        patterns,
+        correctAnswer: boundedCorrectAnswer,
         userAnswer: -1,
         responseTime: 0,
         wasCorrect: false,
-        explanation: data.explanation
+        explanation: typeof data.explanation === 'string' ? data.explanation : 'No explanation provided.'
       };
     } catch (error) {
       console.error('Error generating matrix:', error);
@@ -79,12 +96,14 @@ Return ONLY valid JSON, no markdown or additional text.`;
     setMatrices([]);
     setStartTime(Date.now());
     
+    setShowResults(false);
     setIsLoading(true);
     const matrix = await generateMatrix();
     setIsLoading(false);
-    
+
     if (matrix) {
       setCurrentMatrix(matrix);
+      setStartTime(Date.now());
     } else {
       setTestInProgress(false);
       toast.error('Failed to start test');
@@ -92,7 +111,7 @@ Return ONLY valid JSON, no markdown or additional text.`;
   };
 
   const handleAnswer = async (answerIndex: number) => {
-    if (!currentMatrix) return;
+    if (!currentMatrix || currentMatrix.userAnswer !== -1) return;
 
     const responseTime = (Date.now() - startTime) / 1000;
     const wasCorrect = answerIndex === currentMatrix.correctAnswer;
@@ -104,6 +123,7 @@ Return ONLY valid JSON, no markdown or additional text.`;
       wasCorrect
     };
 
+    setCurrentMatrix(completedMatrix);
     const updatedMatrices = [...matrices, completedMatrix];
     setMatrices(updatedMatrices);
 
@@ -115,15 +135,17 @@ Return ONLY valid JSON, no markdown or additional text.`;
       toast.success('Correct!');
     }
 
+    await new Promise(resolve => setTimeout(resolve, 600));
+
     if (currentMatrixIndex < 3) {
       setIsLoading(true);
-      setStartTime(Date.now());
       const nextMatrix = await generateMatrix();
       setIsLoading(false);
-      
+
       if (nextMatrix) {
         setCurrentMatrix(nextMatrix);
         setCurrentMatrixIndex(currentMatrixIndex + 1);
+        setStartTime(Date.now());
       } else {
         finishTest(updatedMatrices);
       }
@@ -201,15 +223,35 @@ Return ONLY valid JSON, no markdown or additional text.`;
               <div className="flex justify-center" dangerouslySetInnerHTML={{ __html: currentMatrix.svgContent }} />
               
               <div className="grid grid-cols-3 gap-4 max-w-2xl mx-auto">
-                {[0, 1, 2, 3, 4, 5].map(index => (
-                  <button
-                    key={index}
-                    onClick={() => handleAnswer(index)}
-                    className="aspect-square border-2 border-border hover:border-primary rounded-lg p-4 transition-colors"
-                  >
-                    <span className="text-sm font-medium text-muted-foreground">Option {index + 1}</span>
-                  </button>
-                ))}
+                {currentMatrix.options.map((optionSvg, index) => {
+                  const isSelected = currentMatrix.userAnswer === index;
+                  const showFeedback = currentMatrix.userAnswer !== -1;
+                  const isCorrectOption = index === currentMatrix.correctAnswer;
+                  const isIncorrectSelection = isSelected && !isCorrectOption;
+
+                  return (
+                    <button
+                      key={index}
+                      onClick={() => handleAnswer(index)}
+                      disabled={showFeedback}
+                      className={cn(
+                        'aspect-square rounded-lg border-2 p-2 transition-all disabled:cursor-not-allowed',
+                        showFeedback
+                          ? isCorrectOption
+                            ? 'border-emerald-500 ring-2 ring-emerald-500/60'
+                            : isIncorrectSelection
+                              ? 'border-destructive ring-2 ring-destructive/60'
+                              : 'border-border/60 opacity-60'
+                          : 'border-border hover:border-primary hover:ring-2 hover:ring-primary/50'
+                      )}
+                    >
+                      <div
+                        className="h-full w-full [&_svg]:h-full [&_svg]:w-full"
+                        dangerouslySetInnerHTML={{ __html: optionSvg }}
+                      />
+                    </button>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
@@ -224,6 +266,69 @@ Return ONLY valid JSON, no markdown or additional text.`;
         <h2 className="text-2xl font-semibold tracking-tight">Cognitive Testing</h2>
         <p className="text-muted-foreground">Measure your cognitive performance over time</p>
       </div>
+
+      {showResults && matrices.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Resultado do último teste</CardTitle>
+            <CardDescription>Visualiza teus acertos, padrões e explicações</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {matrices.map((matrix, index) => (
+              <div key={matrix.matrixId} className="space-y-4 rounded-lg border p-4">
+                <div className="flex flex-col gap-4 md:flex-row">
+                  <div className="md:w-1/2">
+                    <h4 className="text-sm font-semibold text-muted-foreground">Matriz {index + 1}</h4>
+                    <div
+                      className="mt-2 w-full overflow-hidden rounded-lg border bg-card [&_svg]:h-full [&_svg]:w-full"
+                      dangerouslySetInnerHTML={{ __html: matrix.svgContent }}
+                    />
+                  </div>
+                  <div className="md:w-1/2 space-y-3">
+                    <div>
+                      <p className="text-sm font-medium">Opções</p>
+                      <div className="mt-2 grid grid-cols-3 gap-3">
+                        {matrix.options.map((optionSvg, optionIndex) => {
+                          const isSelected = matrix.userAnswer === optionIndex;
+                          const isCorrectOption = optionIndex === matrix.correctAnswer;
+                          const isIncorrectSelection = isSelected && !isCorrectOption;
+
+                          return (
+                            <div
+                              key={optionIndex}
+                              className={cn(
+                                'aspect-square rounded-lg border-2 p-2 [&_svg]:h-full [&_svg]:w-full',
+                                isCorrectOption
+                                  ? 'border-emerald-500 ring-2 ring-emerald-500/60'
+                                  : isIncorrectSelection
+                                    ? 'border-destructive ring-2 ring-destructive/60'
+                                    : isSelected
+                                      ? 'border-primary ring-2 ring-primary/50'
+                                      : 'border-border/70'
+                              )}
+                              dangerouslySetInnerHTML={{ __html: optionSvg }}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="space-y-1 text-sm">
+                      <p><span className="font-semibold">Explicação:</span> {matrix.explanation}</p>
+                      {matrix.patterns.length > 0 && (
+                        <p className="text-muted-foreground">Padrões: {matrix.patterns.join(', ')}</p>
+                      )}
+                      <p className="text-muted-foreground">
+                        Tempo de resposta: {matrix.responseTime.toFixed(1)}s —
+                        {matrix.wasCorrect ? ' acertou' : ' errou'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -333,27 +438,63 @@ Return ONLY valid JSON, no markdown or additional text.`;
           ) : (
             <div className="space-y-4">
               {recentTests.map(test => (
-                <div key={test.id} className="flex items-center justify-between p-4 rounded-lg border">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg font-medium">Score: {test.totalScore.toFixed(1)}</span>
-                      <span className="text-sm text-muted-foreground">
-                        ({(test.accuracy * 100).toFixed(0)}% accuracy)
-                      </span>
-                    </div>
-                    <div className="flex gap-4 text-xs text-muted-foreground">
-                      <span>Avg response: {test.averageResponseTime.toFixed(1)}s</span>
-                      <span>{safeFormat(test.timestamp, 'MMM d, yyyy h:mm a')}</span>
+                <div key={test.id} className="space-y-4 rounded-lg border p-4">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg font-medium">Score: {test.totalScore.toFixed(1)}</span>
+                        <span className="text-sm text-muted-foreground">
+                          ({(test.accuracy * 100).toFixed(0)}% accuracy)
+                        </span>
+                      </div>
+                      <div className="flex gap-4 text-xs text-muted-foreground">
+                        <span>Avg response: {test.averageResponseTime.toFixed(1)}s</span>
+                        <span>{safeFormat(test.timestamp, 'MMM d, yyyy h:mm a')}</span>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex gap-1">
-                    {test.matrices.map((matrix, i) => (
-                      <div key={i} className="w-8 h-8 rounded flex items-center justify-center border">
-                        {matrix.wasCorrect ? (
-                          <Check className="w-4 h-4 text-primary" weight="bold" />
-                        ) : (
-                          <X className="w-4 h-4 text-destructive" weight="bold" />
-                        )}
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {test.matrices.map((matrix) => (
+                      <div key={matrix.matrixId} className="space-y-3 rounded border p-3">
+                        <div className="flex gap-3">
+                          <div className="w-24 flex-1 overflow-hidden rounded border bg-card">
+                            <div
+                              className="h-full w-full [&_svg]:h-full [&_svg]:w-full"
+                              dangerouslySetInnerHTML={{ __html: matrix.svgContent }}
+                            />
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {matrix.options.map((optionSvg, optionIndex) => {
+                              const isSelected = matrix.userAnswer === optionIndex;
+                              const isCorrectOption = optionIndex === matrix.correctAnswer;
+                              const isIncorrectSelection = isSelected && !isCorrectOption;
+
+                              return (
+                                <div
+                                  key={optionIndex}
+                                  className={cn(
+                                    'h-12 w-12 overflow-hidden rounded border-2 p-1 [&_svg]:h-full [&_svg]:w-full',
+                                    isCorrectOption
+                                      ? 'border-emerald-500'
+                                      : isIncorrectSelection
+                                        ? 'border-destructive'
+                                        : isSelected
+                                          ? 'border-primary'
+                                          : 'border-border/70'
+                                  )}
+                                  dangerouslySetInnerHTML={{ __html: optionSvg }}
+                                />
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <div className="text-xs text-muted-foreground space-y-1">
+                          <p>{matrix.wasCorrect ? 'Acertou' : 'Errou'} em {matrix.responseTime.toFixed(1)}s</p>
+                          {matrix.patterns.length > 0 && (
+                            <p>Padrões: {matrix.patterns.join(', ')}</p>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
