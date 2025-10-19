@@ -6,7 +6,7 @@ import { Brain, Play, Check, X } from '@phosphor-icons/react';
 import type { CognitiveTest, Matrix } from '../lib/types';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
-import { XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Bar, ComposedChart } from 'recharts';
+import { XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Bar, Line, ComposedChart } from 'recharts';
 import { safeFormat } from '@/lib/utils';
 
 export default function CognitiveView() {
@@ -77,7 +77,6 @@ Return ONLY valid JSON, no markdown or additional text.`;
     setTestInProgress(true);
     setCurrentMatrixIndex(0);
     setMatrices([]);
-    setShowResults(false);
     setStartTime(Date.now());
     
     setIsLoading(true);
@@ -154,7 +153,6 @@ Return ONLY valid JSON, no markdown or additional text.`;
     };
 
     setCognitiveTests((current) => [...(current || []), test]);
-    setShowResults(true);
     setTestInProgress(false);
     
     toast.success('Test completed!', {
