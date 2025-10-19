@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Bar, ComposedChart } from 'recharts';
+import { safeFormat } from '@/lib/utils';
 
 export default function CognitiveView() {
   const [cognitiveTests, setCognitiveTests] = useKV<CognitiveTest[]>('cognitiveTests', []);
@@ -169,7 +170,7 @@ Return ONLY valid JSON, no markdown or additional text.`;
     const sortedTests = [...(cognitiveTests || [])].sort((a, b) => a.timestamp - b.timestamp);
     
     return sortedTests.map(test => ({
-      timestamp: format(test.timestamp, 'HH:mm'),
+      timestamp: safeFormat(test.timestamp, 'HH:mm', 'N/A'),
       time: test.timestamp,
       score: test.totalScore,
       accuracy: test.accuracy * 100,
@@ -285,7 +286,7 @@ Return ONLY valid JSON, no markdown or additional text.`;
                   <Tooltip 
                     labelFormatter={(label, payload) => {
                       if (payload && payload.length > 0) {
-                        return format(payload[0].payload.time, 'MMM d, HH:mm');
+                        return safeFormat(payload[0].payload.time, 'MMM d, HH:mm', 'N/A');
                       }
                       return label;
                     }}
@@ -346,7 +347,7 @@ Return ONLY valid JSON, no markdown or additional text.`;
                     </div>
                     <div className="flex gap-4 text-xs text-muted-foreground">
                       <span>Avg response: {test.averageResponseTime.toFixed(1)}s</span>
-                      <span>{format(test.timestamp, 'MMM d, yyyy h:mm a')}</span>
+                      <span>{safeFormat(test.timestamp, 'MMM d, yyyy h:mm a')}</span>
                     </div>
                   </div>
                   <div className="flex gap-1">

@@ -9,6 +9,7 @@ import { Pencil, Trash } from '@phosphor-icons/react';
 import type { Medication, MedicationDose } from '../lib/types';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { safeFormat } from '@/lib/utils';
 
 interface MedicationDosesViewProps {
   medication: Medication;
@@ -32,8 +33,8 @@ export default function MedicationDosesView({ medication, open, onOpenChange }: 
     setEditingDose(dose);
     setEditAmount(dose.doseAmount.toString());
     const date = new Date(dose.timestamp);
-    setEditDate(format(date, 'yyyy-MM-dd'));
-    setEditTime(format(date, 'HH:mm'));
+    setEditDate(safeFormat(dose.timestamp, 'yyyy-MM-dd', ''));
+    setEditTime(safeFormat(dose.timestamp, 'HH:mm', ''));
     setEditDialogOpen(true);
   };
 
@@ -90,11 +91,11 @@ export default function MedicationDosesView({ medication, open, onOpenChange }: 
                               {dose.doseAmount}mg
                             </span>
                             <span className="text-sm text-muted-foreground">
-                              {format(dose.timestamp, 'MMM d, yyyy')}
+                              {safeFormat(dose.timestamp, 'MMM d, yyyy')}
                             </span>
                           </div>
                           <div className="text-sm text-muted-foreground">
-                            {format(dose.timestamp, 'h:mm a')}
+                            {safeFormat(dose.timestamp, 'h:mm a')}
                           </div>
                         </div>
                         <div className="flex gap-2">

@@ -13,6 +13,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 import type { MoodEntry } from '@/lib/types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { safeFormat } from '@/lib/utils';
 
 export default function MoodView() {
   const [moodEntries, setMoodEntries] = useKV<MoodEntry[]>('moodEntries', []);
@@ -103,8 +104,8 @@ export default function MoodView() {
     setEditEnergy(entry.energyLevel);
     setEditFocus(entry.focusLevel);
     setEditNotes(entry.notes || '');
-    setEditDate(format(entry.timestamp, 'yyyy-MM-dd'));
-    setEditTime(format(entry.timestamp, 'HH:mm'));
+    setEditDate(safeFormat(entry.timestamp, 'yyyy-MM-dd', ''));
+    setEditTime(safeFormat(entry.timestamp, 'HH:mm', ''));
     setEditDialogOpen(true);
   };
 
@@ -148,7 +149,7 @@ export default function MoodView() {
       .filter(e => e.timestamp >= thirtyDaysAgo)
       .sort((a, b) => a.timestamp - b.timestamp)
       .map(e => ({
-        timestamp: format(e.timestamp, 'MMM d'),
+        timestamp: safeFormat(e.timestamp, 'MMM d', 'N/A'),
         time: e.timestamp,
         mood: e.moodScore,
         anxiety: e.anxietyLevel,
@@ -380,7 +381,7 @@ export default function MoodView() {
                       )}
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      {format(entry.timestamp, 'MMM d, yyyy h:mm a')}
+                      {safeFormat(entry.timestamp, 'MMM d, yyyy h:mm a')}
                     </p>
                     {entry.notes && (
                       <p className="text-sm mt-1">{entry.notes}</p>
@@ -437,7 +438,7 @@ export default function MoodView() {
                         )}
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        {format(entry.timestamp, 'MMM d, yyyy h:mm a')}
+                        {safeFormat(entry.timestamp, 'MMM d, yyyy h:mm a')}
                       </p>
                       {entry.notes && (
                         <p className="text-sm mt-1">{entry.notes}</p>

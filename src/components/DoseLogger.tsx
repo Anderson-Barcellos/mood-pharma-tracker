@@ -11,6 +11,7 @@ import type { Medication, MedicationDose } from '../lib/types';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { safeFormat } from '@/lib/utils';
 
 export default function DoseLogger() {
   const [medications] = useKV<Medication[]>('medications', []);
@@ -46,7 +47,7 @@ export default function DoseLogger() {
     setDoses((current) => [...(current || []), dose]);
     
     toast.success(`Logged ${doseAmount}mg of ${medication.name}`, {
-      description: format(timestamp, 'MMM d, h:mm a')
+      description: safeFormat(timestamp, 'MMM d, h:mm a')
     });
 
     setSelectedMedicationId('');
@@ -158,7 +159,7 @@ export default function DoseLogger() {
             {recentDoses.map(dose => (
               <div key={dose.id} className="flex justify-between text-xs text-muted-foreground">
                 <span>{getMedicationName(dose.medicationId)}</span>
-                <span>{dose.doseAmount}mg - {format(dose.timestamp, 'h:mm a')}</span>
+                <span>{dose.doseAmount}mg - {safeFormat(dose.timestamp, 'h:mm a')}</span>
               </div>
             ))}
           </div>

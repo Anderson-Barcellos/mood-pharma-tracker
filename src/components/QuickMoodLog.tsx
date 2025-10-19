@@ -11,6 +11,7 @@ import type { MoodEntry } from '../lib/types';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { safeFormat } from '@/lib/utils';
 
 export default function QuickMoodLog() {
   const [moodEntries, setMoodEntries] = useKV<MoodEntry[]>('moodEntries', []);
@@ -41,7 +42,7 @@ export default function QuickMoodLog() {
     setMoodEntries((current) => [...(current || []), entry]);
     
     toast.success(`Mood logged: ${moodScore}/10`, {
-      description: format(timestamp, 'MMM d, h:mm a')
+      description: safeFormat(timestamp, 'MMM d, h:mm a')
     });
 
     setMoodScore(5);
@@ -140,7 +141,7 @@ export default function QuickMoodLog() {
                   {getMoodIcon(mood.moodScore)}
                   <span>Mood: {mood.moodScore}/10</span>
                 </div>
-                <span>{format(mood.timestamp, 'h:mm a')}</span>
+                <span>{safeFormat(mood.timestamp, 'h:mm a')}</span>
               </div>
             ))}
           </div>
