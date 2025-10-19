@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { useKV } from '@github/spark/hooks';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Toaster } from '@/components/ui/sonner';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
+import { Toaster } from '@/shared/ui/sonner';
 import { ChartLine, Pill, Smiley, Brain } from '@phosphor-icons/react';
-import Dashboard from './components/Dashboard';
-import MedicationsView from './components/MedicationsView';
-import MoodView from './components/MoodView';
-import CognitiveView from './components/CognitiveView';
-import AnalyticsView from './components/AnalyticsView';
-import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from './lib/types';
+import DashboardPage from '@/features/analytics/pages/DashboardPage';
+import MedicationsPage from '@/features/medications/pages/MedicationsPage';
+import MoodPage from '@/features/mood/pages/MoodPage';
+import CognitivePage from '@/features/cognitive/pages/CognitivePage';
+import AnalyticsPage from '@/features/analytics/pages/AnalyticsPage';
+import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from '@/shared/types';
 
 function App() {
   const [medications] = useKV<Medication[]>('medications', []);
@@ -62,7 +62,7 @@ function App() {
           </TabsList>
 
           <TabsContent value="dashboard" className="space-y-6">
-            <Dashboard 
+            <DashboardPage
               medications={safeMedications}
               doses={safeDoses}
               moodEntries={safeMoodEntries}
@@ -71,19 +71,19 @@ function App() {
           </TabsContent>
 
           <TabsContent value="medications" className="space-y-6">
-            <MedicationsView />
+            <MedicationsPage />
           </TabsContent>
 
           <TabsContent value="mood" className="space-y-6">
-            <MoodView />
+            <MoodPage />
           </TabsContent>
 
           <TabsContent value="cognitive" className="space-y-6">
-            <CognitiveView />
+            <CognitivePage />
           </TabsContent>
 
           <TabsContent value="analytics" className="space-y-6">
-            <AnalyticsView 
+            <AnalyticsPage
               medications={safeMedications}
               doses={safeDoses}
               moodEntries={safeMoodEntries}
