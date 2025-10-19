@@ -1,12 +1,12 @@
 import { useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ComposedChart, Line, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { format, subDays } from 'date-fns';
+import { useTimeFormat } from '@/hooks/use-time-format';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { ComposedChart, Line, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area } from 'recharts';
-import { generateConcentrationCurve } from '@/lib/pharmacokinetics';
-import { format, subDays } from 'date-fns';
+import { calculateConcentration } from '@/lib/pharmacokinetics';
 import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from '@/lib/types';
-import { useTimeFormat } from '@/hooks/use-time-format';
 
 interface AnalyticsViewProps {
   medications: Medication[];
@@ -32,7 +32,7 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
     const endTime = now;
 
     const pointsPerDay = dayRange <= 3 ? 24 : dayRange <= 7 ? 12 : 8;
-    const totalPoints = dayRange * pointsPerDay;
+    const totalPoints = Math.ceil(dayRange * pointsPerDay);
     const interval = (endTime - startTime) / totalPoints;
 
     const timePoints: number[] = [];
@@ -40,23 +40,24 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
       timePoints.push(startTime + (i * interval));
     }
 
-    const medDoses = doses.filter(d => d.medicationId === selectedMedication.id);
-    const concentrationCurve = generateConcentrationCurve(
-      selectedMedication,
-      medDoses,
-      startTime,
-      endTime,
-      timePoints.length
+    const relevantDoses = doses.filter(
+      d => d.medicationId === selectedMedication.id &&
+           d.timestamp >= startTime &&
+           d.timestamp <= endTime
     );
 
-    const data = timePoints.map((time, idx) => {
-      const concentration = concentrationCurve[idx]?.concentration || 0;
-      
+    const data = timePoints.map(time => {
       const dataPoint: any = {
         time,
-        timestamp: time,
-        concentration: concentration > 0.01 ? concentration : null
+        timestamp: time
       };
+
+      const concentration = calculateConcentration(
+        selectedMedication,
+        relevantDoses,
+        time
+      );
+      dataPoint.concentration = concentration > 0.01 ? concentration : null;
 
       const nearbyMoods = moodEntries.filter(
         m => Math.abs(m.timestamp - time) < interval
@@ -154,7 +155,7 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
               <Label>Medication</Label>
               <Select value={selectedMedicationId} onValueChange={setSelectedMedicationId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select medication" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {medications?.map(med => (
@@ -174,7 +175,6 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="1">Last 24 hours</SelectItem>
-                  <SelectItem value="2">Last 2 days</SelectItem>
                   <SelectItem value="3">Last 3 days</SelectItem>
                   <SelectItem value="7">Last 7 days</SelectItem>
                   <SelectItem value="14">Last 14 days</SelectItem>
@@ -233,58 +233,42 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
                   <YAxis
                     yAxisId="right"
                     orientation="right"
-                    label={{ value: 'Concentration (ng/mL)', angle: 90, position: 'insideRight', style: { fontSize: 12 } }}
+                    label={{ value: 'Concentration', angle: 90, position: 'insideRight', style: { fontSize: 12 } }}
                     domain={[concentrationRange.min, concentrationRange.max]}
                     tick={{ fontSize: 11 }}
-                    tickFormatter={(value) => value.toFixed(1)}
                   />
-                  <Tooltip
-                    labelFormatter={(label) => {
-                      const point = chartData.find(d => d.timestamp === label);
-                      return point ? formatTooltip(point.time) : label;
-                    }}
-                    formatter={(value: any, name: string) => {
-                      if (value === null || value === undefined) return ['No data', name];
-                      if (name === 'Mood Score' || name === 'Cognitive Score') {
-                        return [value.toFixed(2), name];
-                      }
-                      if (name === 'Concentration') {
-                        return [value.toFixed(2) + ' ng/mL', name];
-                      }
-                      return [value, name];
-                    }}
-                    contentStyle={{
-                      backgroundColor: 'hsl(var(--card))',
+                  <Tooltip 
+                    labelFormatter={formatTooltip}
+                    contentStyle={{ 
+                      backgroundColor: 'hsl(var(--popover))',
                       border: '1px solid hsl(var(--border))',
                       borderRadius: '8px'
                     }}
                   />
-                  <Legend />
-
-                  <Area
+                  <Legend wrapperStyle={{ fontSize: '12px' }} />
+                  
+                  <Line
                     yAxisId="right"
                     type="monotone"
                     dataKey="concentration"
-                    fill="url(#concentrationGradient)"
                     stroke="hsl(var(--primary))"
                     strokeWidth={2}
+                    dot={false}
                     name="Concentration"
-                    connectNulls={false}
+                    connectNulls
                   />
-
+                  
                   <Scatter
                     yAxisId="left"
-                    data={moodScatterData}
-                    dataKey="value"
-                    fill="hsl(var(--accent))"
+                    dataKey="mood"
+                    fill="hsl(var(--chart-2))"
                     name="Mood Score"
                   />
-
+                  
                   <Scatter
                     yAxisId="left"
-                    data={cognitiveScatterData}
-                    dataKey="value"
-                    fill="hsl(var(--cognitive))"
+                    dataKey="cognitiveScore"
+                    fill="hsl(var(--chart-3))"
                     name="Cognitive Score"
                   />
                 </ComposedChart>
@@ -293,17 +277,11 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
           </CardContent>
         </Card>
       )}
-
-      {medications.length === 0 && (
-        <Card className="border-dashed">
-          <CardHeader>
-            <CardTitle>No Medications</CardTitle>
-            <CardDescription>Add medications to view analytics</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Analytics requires at least one medication with dose records.
-            </p>
+      
+      {!selectedMedication && (
+        <Card>
+          <CardContent className="flex items-center justify-center py-12">
+            <p className="text-muted-foreground">Please select a medication to view analytics</p>
           </CardContent>
         </Card>
       )}
