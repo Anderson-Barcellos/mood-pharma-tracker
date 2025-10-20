@@ -17,6 +17,9 @@ export const ErrorFallback = ({ error, resetErrorBoundary }) => {
           <AlertDescription>
             Bah, tchê, rolou uma falha inesperada no app independente. O detalhe do erro tá logo abaixo.
             Recarrega a página ou reinicia o processo local. Se continuar quebrando, limpa os dados locais e sobe de novo.
+          <AlertTitle>O aplicativo travou em tempo de execução</AlertTitle>
+          <AlertDescription>
+            Algo inesperado rolou enquanto renderizávamos a interface. Os detalhes do erro aparecem abaixo — compartilha com o autor pra gente debugar rapidinho.
           </AlertDescription>
         </Alert>
         

@@ -30,7 +30,6 @@ import {
   requestMatrix,
   getFallbackMatrices,
   hasGeminiSupport,
-  hasSparkSupport,
   MatrixGenerationError,
   type MatrixSource
 } from '@/features/cognitive/services/geminiService';
@@ -99,6 +98,8 @@ export default function CognitiveView() {
       setAiError(
         `${buildRemoteServiceUnavailableMessage('no navegador')} Mas temos o ${FALLBACK_DATASET_LABEL} pra te salvar.`
       );
+    if (!offline && !hasGeminiSupport()) {
+      setAiError('A IA não tá configurada por aqui agora, mas temos matrizes cacheadas pra te ajudar.');
       setShowOfflinePrompt(true);
       return null;
     }
@@ -148,6 +149,8 @@ export default function CognitiveView() {
           setAiError(
             `Bah, o ${PRIMARY_AI_SERVICE_LABEL} deu uma oscilada. ${buildOfflineSuggestionMessage('seguir no teste')}`
           );
+        if (error.code === 'FALLBACK_REQUIRED' || error.code === 'GEMINI_UNAVAILABLE') {
+          setAiError('Bah, a IA tá fora do ar agora. Tu pode cancelar ou rodar um teste cacheado.');
           setShowOfflinePrompt(true);
           return null;
         }

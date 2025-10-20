@@ -12,6 +12,14 @@ import { toast } from 'sonner';
 import type { MoodEntry } from '@/lib/types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { safeFormat } from '@/lib/utils';
+import { useMoodEntries } from '@/hooks/useMoodEntries';
+
+export default function MoodView() {
+  const { moodEntries, upsertMoodEntry, deleteMoodEntry } = useMoodEntries();
+import { usePersistentState } from '@/lib/usePersistentState';
+
+export default function MoodView() {
+  const [moodEntries, setMoodEntries] = usePersistentState<MoodEntry[]>('moodEntries', []);
 import { useMoodEntries } from '@/hooks/use-mood-entries';
 
 export default function MoodView() {
@@ -48,6 +56,9 @@ export default function MoodView() {
   };
 
   const handleSave = async () => {
+    const entry: MoodEntry = {
+      id: uuidv4(),
+      timestamp: Date.now(),
     const createdAt = Date.now();
     await createMoodEntry({
       timestamp: createdAt,
@@ -56,6 +67,10 @@ export default function MoodView() {
       energyLevel,
       focusLevel,
       notes: notes || undefined,
+      createdAt: Date.now()
+    };
+
+    await upsertMoodEntry(entry);
       createdAt
     });
     toast.success('Mood entry saved');
@@ -81,6 +96,9 @@ export default function MoodView() {
       timestamp,
       moodScore: quickMoodScore,
       createdAt: Date.now()
+    };
+
+    await upsertMoodEntry(entry);
     });
     toast.success('Quick mood logged');
     setQuickDialogOpen(false);
@@ -118,6 +136,7 @@ export default function MoodView() {
       notes: editNotes || undefined
     };
 
+    await upsertMoodEntry(updatedEntry);
     await updateMoodEntry(editingEntry.id, updates);
     toast.success('Mood entry updated');
     setEditDialogOpen(false);

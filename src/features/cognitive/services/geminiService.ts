@@ -1,6 +1,9 @@
 import { PRIMARY_AI_SERVICE_LABEL, FALLBACK_DATASET_LABEL, buildRemoteServiceUnavailableMessage } from '@/shared/constants/ai';
 
 export type MatrixSource = 'spark' | 'gemini' | 'fallback';
+import { GeminiClient, GeminiClientError } from '@/lib/geminiClient';
+
+export type MatrixSource = 'gemini' | 'fallback';
 
 export interface GeminiMatrixPayload {
   matrixSVG: string;
@@ -16,8 +19,6 @@ export interface MatrixGenerationResult extends GeminiMatrixPayload {
 }
 
 export type MatrixGenerationErrorCode =
-  | 'SPARK_UNAVAILABLE'
-  | 'SPARK_ERROR'
   | 'GEMINI_UNAVAILABLE'
   | 'GEMINI_ERROR'
   | 'FALLBACK_REQUIRED'
@@ -41,15 +42,22 @@ export class MatrixGenerationError extends Error {
 
 type FallbackMatrix = GeminiMatrixPayload & { id: string };
 
-declare global {
-  interface Window {
-    spark?: {
-      llm?: (prompt: string, model: string, jsonMode?: boolean) => Promise<string>;
-    };
-  }
-}
+const resolveTimeout = (value?: string): number | undefined => {
+  if (!value) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+};
 
-const GEMINI_MODEL = 'gemini-1.5-flash-latest';
+const geminiClient = new GeminiClient({
+  apiUrl: import.meta.env.VITE_GEMINI_API_URL,
+  apiKey: import.meta.env.VITE_GEMINI_API_KEY,
+  model: import.meta.env.VITE_GEMINI_MODEL,
+  timeoutMs: resolveTimeout(import.meta.env.VITE_GEMINI_TIMEOUT_MS),
+  defaultGenerationConfig: {
+    temperature: 0.4,
+    maxOutputTokens: 2048
+  }
+});
 
 const FALLBACK_MATRICES: readonly FallbackMatrix[] = [
   {
@@ -265,13 +273,18 @@ const requestSparkMatrix = async (prompt: string): Promise<MatrixGenerationResul
     );
   }
 
+export const fetchRavenMatrix = async (prompt: string, signal?: AbortSignal): Promise<MatrixGenerationResult> => {
   try {
-    const response = await window.spark.llm(prompt, 'gpt-4o', true);
+    const response = await geminiClient.generateContent({
+      prompt,
+      signal
+    });
+
     const payload = parsePayload(response);
     return {
       id: crypto.randomUUID(),
       ...payload,
-      source: 'spark'
+      source: 'gemini'
     };
   } catch (error) {
     if (error instanceof MatrixGenerationError) {
@@ -284,62 +297,27 @@ const requestSparkMatrix = async (prompt: string): Promise<MatrixGenerationResul
 const requestGeminiMatrix = async (prompt: string, signal?: AbortSignal): Promise<MatrixGenerationResult> => {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
-  if (!apiKey) {
-    throw new MatrixGenerationError('Gemini API key not configured', 'GEMINI_UNAVAILABLE');
-  }
-
-  try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        signal,
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: prompt }]
-            }
-          ],
-          generationConfig: {
-            temperature: 0.4,
-            maxOutputTokens: 2048
-          }
-        })
+    if (error instanceof GeminiClientError) {
+      if (error.code === 'CONFIG_ERROR') {
+        throw new MatrixGenerationError('Gemini API not configured', 'GEMINI_UNAVAILABLE', error);
       }
-    );
 
-    if (!response.ok) {
-      throw new MatrixGenerationError(`Gemini API error: ${response.status}`, 'GEMINI_ERROR');
+      if (error.code === 'PARSER_ERROR') {
+        throw new MatrixGenerationError('Gemini returned an empty response', 'PARSE_ERROR', error);
+      }
+
+      throw new MatrixGenerationError(error.message, 'GEMINI_ERROR', error);
     }
 
-    const data = await response.json();
-    const candidate = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!candidate) {
-      throw new MatrixGenerationError('Gemini returned an empty response', 'GEMINI_ERROR');
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new MatrixGenerationError('Gemini request aborted', 'GEMINI_ERROR', error);
     }
 
-    const payload = parsePayload(candidate);
-    return {
-      id: crypto.randomUUID(),
-      ...payload,
-      source: 'gemini'
-    };
-  } catch (error) {
-    if (error instanceof MatrixGenerationError) {
-      throw error;
-    }
     throw new MatrixGenerationError('Gemini request failed', 'GEMINI_ERROR', error);
   }
 };
 
-export const hasSparkSupport = (): boolean => typeof window !== 'undefined' && typeof window.spark?.llm === 'function';
-
-export const hasGeminiSupport = (): boolean => Boolean(import.meta.env.VITE_GEMINI_API_KEY);
+export const hasGeminiSupport = (): boolean => geminiClient.isConfigured();
 
 export const getFallbackMatrices = (): readonly FallbackMatrix[] => FALLBACK_MATRICES;
 
@@ -347,21 +325,18 @@ export const requestMatrix = async (
   prompt: string,
   { allowFallback = true, fallbackIndex, signal }: RequestMatrixOptions = {}
 ): Promise<MatrixGenerationResult> => {
-  if (hasSparkSupport()) {
-    try {
-      return await requestSparkMatrix(prompt);
-    } catch (error) {
-      if (error instanceof MatrixGenerationError && error.code === 'PARSE_ERROR') {
-        throw error;
-      }
-    }
-  }
+  let lastError: MatrixGenerationError | undefined;
 
   try {
-    return await requestGeminiMatrix(prompt, signal);
+    return await fetchRavenMatrix(prompt, signal);
   } catch (error) {
-    if (error instanceof MatrixGenerationError && error.code === 'PARSE_ERROR') {
-      throw error;
+    if (error instanceof MatrixGenerationError) {
+      if (error.code === 'PARSE_ERROR') {
+        throw error;
+      }
+      lastError = error;
+    } else {
+      lastError = new MatrixGenerationError('Gemini request failed', 'GEMINI_ERROR', error);
     }
   }
 
@@ -370,9 +345,12 @@ export const requestMatrix = async (
       `${buildRemoteServiceUnavailableMessage()} e fallback desativado`,
       'FALLBACK_REQUIRED'
     );
+    if (lastError?.code === 'GEMINI_UNAVAILABLE') {
+      throw lastError;
+    }
+
+    throw new MatrixGenerationError('AI providers unavailable and fallback disabled', 'FALLBACK_REQUIRED', lastError);
   }
 
   return buildFallback(fallbackIndex);
 };
-
-export const isLiveAiAvailable = (): boolean => hasSparkSupport() || hasGeminiSupport();
