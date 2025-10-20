@@ -48,6 +48,8 @@ export interface Matrix {
   responseTime: number;
   wasCorrect: boolean;
   explanation: string;
+  patterns: string[];
+  generationSource: 'spark' | 'fallback';
   options?: string[];
   patterns?: string[];
   source?: 'spark' | 'gemini' | 'fallback';
