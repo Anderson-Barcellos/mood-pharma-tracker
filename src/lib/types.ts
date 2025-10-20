@@ -42,6 +42,7 @@ export interface Matrix {
   matrixId: string;
   svgContent: string;
   options: string[];
+  patterns: string[];
   correctAnswer: number;
   userAnswer: number;
   responseTime: number;
@@ -49,6 +50,9 @@ export interface Matrix {
   explanation: string;
   patterns: string[];
   generationSource: 'spark' | 'fallback';
+  options?: string[];
+  patterns?: string[];
+  source?: 'spark' | 'gemini' | 'fallback';
 }
 
 export interface CognitiveTest {

@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useKV } from '@github/spark/hooks';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -9,9 +8,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Pill, Pencil, Trash, ClockCounterClockwise } from '@phosphor-icons/react';
-import type { Medication, MedicationCategory, MedicationDose } from '../lib/types';
+import type { Medication, MedicationCategory } from '../lib/types';
 import { v4 as uuidv4 } from 'uuid';
 import MedicationDosesView from './MedicationDosesView';
+import { useMedications } from '@/hooks/useMedications';
+import { useDoses } from '@/hooks/useDoses';
+import MedicationDosesView from './MedicationDosesView';
+import { usePersistentState } from '../lib/usePersistentState';
+import { useMedications } from '@/hooks/use-medications';
+import { useDoses } from '@/hooks/use-doses';
 
 const MEDICATION_CATEGORIES: MedicationCategory[] = [
   'SSRI',
@@ -24,8 +29,12 @@ const MEDICATION_CATEGORIES: MedicationCategory[] = [
 ];
 
 export default function MedicationsView() {
-  const [medications, setMedications] = useKV<Medication[]>('medications', []);
-  const [doses] = useKV<MedicationDose[]>('doses', []);
+  const { medications, upsertMedication, deleteMedication } = useMedications();
+  const { doses, deleteDosesByMedication } = useDoses();
+  const [medications, setMedications] = usePersistentState<Medication[]>('medications', []);
+  const [doses] = usePersistentState<MedicationDose[]>('doses', []);
+  const { medications, createMedication, updateMedication, deleteMedication } = useMedications();
+  const { doses } = useDoses();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMed, setEditingMed] = useState<Medication | null>(null);
   const [viewDosesMed, setViewDosesMed] = useState<Medication | null>(null);
@@ -76,37 +85,41 @@ export default function MedicationsView() {
     setDialogOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const medicationData: Medication = {
       id: editingMed?.id || uuidv4(),
+  const parseNumber = (value: string, fallback: number) => {
+    const parsed = parseFloat(value);
+    return Number.isNaN(parsed) ? fallback : parsed;
+  };
+
+  const handleSave = async () => {
+    const basePayload = {
       name: formData.name,
       brandName: formData.brandName || undefined,
       category: formData.category,
-      halfLife: parseFloat(formData.halfLife),
-      volumeOfDistribution: parseFloat(formData.volumeOfDistribution),
-      bioavailability: parseFloat(formData.bioavailability),
-      absorptionRate: parseFloat(formData.absorptionRate),
-      notes: formData.notes || undefined,
-      createdAt: editingMed?.createdAt || Date.now(),
-      updatedAt: Date.now()
-    };
+      halfLife: parseNumber(formData.halfLife, editingMed?.halfLife ?? 0),
+      volumeOfDistribution: parseNumber(formData.volumeOfDistribution, editingMed?.volumeOfDistribution ?? 0),
+      bioavailability: parseNumber(formData.bioavailability, editingMed?.bioavailability ?? 0),
+      absorptionRate: parseNumber(formData.absorptionRate, editingMed?.absorptionRate ?? 1),
+      notes: formData.notes || undefined
+    } satisfies Omit<Medication, 'id' | 'createdAt' | 'updatedAt'>;
 
-    setMedications((current) => {
-      const currentMeds = current || [];
-      if (editingMed) {
-        return currentMeds.map(m => m.id === editingMed.id ? medicationData : m);
-      } else {
-        return [...currentMeds, medicationData];
-      }
-    });
+    await upsertMedication(medicationData);
+    if (editingMed) {
+      await updateMedication(editingMed.id, basePayload);
+    } else {
+      await createMedication(basePayload);
+    }
 
     setDialogOpen(false);
     resetForm();
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this medication?')) {
-      setMedications((current) => (current || []).filter(m => m.id !== id));
+      await deleteMedication(id);
+      await deleteDosesByMedication(id);
     }
   };
 
@@ -116,7 +129,7 @@ export default function MedicationsView() {
   };
 
   const getDoseCount = (medicationId: string) => {
-    return (doses || []).filter(d => d.medicationId === medicationId).length;
+    return doses.filter(d => d.medicationId === medicationId).length;
   };
 
   return (
