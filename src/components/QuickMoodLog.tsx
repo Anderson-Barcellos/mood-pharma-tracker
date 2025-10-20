@@ -6,8 +6,6 @@ import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Smiley, SmileyMeh, SmileySad } from '@phosphor-icons/react';
-import type { MoodEntry } from '../lib/types';
-import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { safeFormat } from '@/lib/utils';
@@ -15,6 +13,14 @@ import { useMoodEntries } from '@/hooks/useMoodEntries';
 
 export default function QuickMoodLog() {
   const { moodEntries, upsertMoodEntry } = useMoodEntries();
+import { usePersistentState } from '../lib/usePersistentState';
+
+export default function QuickMoodLog() {
+  const [moodEntries, setMoodEntries] = usePersistentState<MoodEntry[]>('moodEntries', []);
+import { useMoodEntries } from '@/hooks/use-mood-entries';
+
+export default function QuickMoodLog() {
+  const { moodEntries, createMoodEntry } = useMoodEntries();
   const [moodScore, setMoodScore] = useState(5);
   const [dialogOpen, setDialogOpen] = useState(false);
   
@@ -32,12 +38,11 @@ export default function QuickMoodLog() {
     const dateTime = new Date(`${selectedDate}T${selectedTime}`);
     const timestamp = dateTime.getTime();
 
-    const entry: MoodEntry = {
-      id: uuidv4(),
+    await createMoodEntry({
       timestamp,
       moodScore,
       createdAt: Date.now()
-    };
+    });
 
     await upsertMoodEntry(entry);
 

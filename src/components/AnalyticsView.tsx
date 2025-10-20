@@ -1,22 +1,28 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { ComposedChart, Line, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { format } from 'date-fns';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { calculateConcentration } from '@/lib/pharmacokinetics';
-import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from '@/lib/types';
+import { useMedications } from '@/hooks/use-medications';
+import { useDoses } from '@/hooks/use-doses';
+import { useMoodEntries } from '@/hooks/use-mood-entries';
+import { useCognitiveTests } from '@/hooks/use-cognitive-tests';
 
-interface AnalyticsViewProps {
-  medications: Medication[];
-  doses: MedicationDose[];
-  moodEntries: MoodEntry[];
-  cognitiveTests: CognitiveTest[];
-}
-
-export default function AnalyticsView({ medications, doses, moodEntries, cognitiveTests }: AnalyticsViewProps) {
+export default function AnalyticsView() {
+  const { medications } = useMedications();
+  const { doses } = useDoses();
+  const { moodEntries } = useMoodEntries();
+  const { cognitiveTests } = useCognitiveTests();
   const [selectedMedicationId, setSelectedMedicationId] = useState<string>('');
   const [dayRange, setDayRange] = useState<number>(7);
+
+  useEffect(() => {
+    if (!selectedMedicationId && medications.length > 0) {
+      setSelectedMedicationId(medications[0].id);
+    }
+  }, [medications, selectedMedicationId]);
 
   const selectedMedication = medications.find(m => m.id === selectedMedicationId);
 
@@ -107,7 +113,7 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
   }, [chartData]);
 
   const stats = useMemo(() => {
-    if (!moodEntries || !cognitiveTests) return null;
+    if (moodEntries.length === 0 && cognitiveTests.length === 0) return null;
 
     const recentMoods = moodEntries.slice(-10);
     const avgMood = recentMoods.length > 0

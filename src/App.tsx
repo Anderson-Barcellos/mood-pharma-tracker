@@ -1,4 +1,15 @@
 import { useState } from 'react';
+import { useKV } from '@github/spark/hooks';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
+import { Toaster } from '@/shared/ui/sonner';
+import { ChartLine, Pill, Smiley, Brain } from '@phosphor-icons/react';
+import DashboardPage from '@/features/analytics/pages/DashboardPage';
+import MedicationsPage from '@/features/medications/pages/MedicationsPage';
+import MoodPage from '@/features/mood/pages/MoodPage';
+import CognitivePage from '@/features/cognitive/pages/CognitivePage';
+import AnalyticsPage from '@/features/analytics/pages/AnalyticsPage';
+import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from '@/shared/types';
+import { useEffect, useMemo, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Toaster } from '@/components/ui/sonner';
 import { ChartLine, Pill, Smiley, Brain } from '@phosphor-icons/react';
@@ -17,16 +28,54 @@ function App() {
   const { doses } = useDoses();
   const { moodEntries } = useMoodEntries();
   const { cognitiveTests } = useCognitiveTests();
-  const [activeTab, setActiveTab] = useState('dashboard');
+import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from './lib/types';
+import { usePersistentState } from './lib/usePersistentState';
 
-  const safeMedications = medications || [];
-  const safeDoses = doses || [];
-  const safeMoodEntries = moodEntries || [];
-  const safeCognitiveTests = cognitiveTests || [];
+function App() {
+  const [medications] = usePersistentState<Medication[]>('medications', []);
+  const [doses] = usePersistentState<MedicationDose[]>('doses', []);
+  const [moodEntries] = usePersistentState<MoodEntry[]>('moodEntries', []);
+  const [cognitiveTests] = usePersistentState<CognitiveTest[]>('cognitiveTests', []);
+import { migrateLegacyData } from '@/core/database/db';
+import { useMedications } from '@/hooks/use-medications';
+import { useDoses } from '@/hooks/use-doses';
+import { useMoodEntries } from '@/hooks/use-mood-entries';
+import { useCognitiveTests } from '@/hooks/use-cognitive-tests';
+
+function App() {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [migrationPending, setMigrationPending] = useState(true);
+
+  const { isLoading: medicationsLoading } = useMedications();
+  const { isLoading: dosesLoading } = useDoses();
+  const { isLoading: moodLoading } = useMoodEntries();
+  const { isLoading: cognitiveLoading } = useCognitiveTests();
+
+  useEffect(() => {
+    let cancelled = false;
+    migrateLegacyData().finally(() => {
+      if (!cancelled) {
+        setMigrationPending(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const isInitializing = useMemo(() => {
+    return migrationPending || medicationsLoading || dosesLoading || moodLoading || cognitiveLoading;
+  }, [migrationPending, medicationsLoading, dosesLoading, moodLoading, cognitiveLoading]);
 
   return (
     <div className="min-h-screen bg-background">
       <Toaster />
+      {isInitializing && (
+        <div className="w-full bg-muted text-muted-foreground text-sm py-2 text-center">
+          Sincronizando dados locais...
+        </div>
+      )}
       <header className="border-b border-border bg-card">
         <div className="container mx-auto px-4 py-4">
           <h1 className="text-3xl font-bold tracking-tight text-foreground">
@@ -64,33 +113,35 @@ function App() {
           </TabsList>
 
           <TabsContent value="dashboard" className="space-y-6">
-            <Dashboard 
+            <DashboardPage
               medications={safeMedications}
               doses={safeDoses}
               moodEntries={safeMoodEntries}
               cognitiveTests={safeCognitiveTests}
             />
+            <Dashboard />
           </TabsContent>
 
           <TabsContent value="medications" className="space-y-6">
-            <MedicationsView />
+            <MedicationsPage />
           </TabsContent>
 
           <TabsContent value="mood" className="space-y-6">
-            <MoodView />
+            <MoodPage />
           </TabsContent>
 
           <TabsContent value="cognitive" className="space-y-6">
-            <CognitiveView />
+            <CognitivePage />
           </TabsContent>
 
           <TabsContent value="analytics" className="space-y-6">
-            <AnalyticsView 
+            <AnalyticsPage
               medications={safeMedications}
               doses={safeDoses}
               moodEntries={safeMoodEntries}
               cognitiveTests={safeCognitiveTests}
             />
+            <AnalyticsView />
           </TabsContent>
         </Tabs>
       </main>

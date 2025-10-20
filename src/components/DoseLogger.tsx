@@ -17,6 +17,20 @@ import { useDoses } from '@/hooks/useDoses';
 export default function DoseLogger() {
   const { medications } = useMedications();
   const { doses, upsertDose } = useDoses();
+import { toast } from 'sonner';
+import { format } from 'date-fns';
+import { safeFormat } from '@/lib/utils';
+import { usePersistentState } from '../lib/usePersistentState';
+
+export default function DoseLogger() {
+  const [medications] = usePersistentState<Medication[]>('medications', []);
+  const [doses, setDoses] = usePersistentState<MedicationDose[]>('doses', []);
+import { useMedications } from '@/hooks/use-medications';
+import { useDoses } from '@/hooks/use-doses';
+
+export default function DoseLogger() {
+  const { medications } = useMedications();
+  const { doses, createDose } = useDoses();
   const [selectedMedicationId, setSelectedMedicationId] = useState('');
   const [doseAmount, setDoseAmount] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -37,13 +51,12 @@ export default function DoseLogger() {
     const dateTime = new Date(`${selectedDate}T${selectedTime}`);
     const timestamp = dateTime.getTime();
 
-    const dose: MedicationDose = {
-      id: uuidv4(),
+    await createDose({
       medicationId: selectedMedicationId,
       timestamp,
       doseAmount: parseFloat(doseAmount),
       createdAt: Date.now()
-    };
+    });
 
     await upsertDose(dose);
 

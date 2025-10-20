@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
-import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 import type { MoodEntry } from '@/lib/types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -17,6 +16,14 @@ import { useMoodEntries } from '@/hooks/useMoodEntries';
 
 export default function MoodView() {
   const { moodEntries, upsertMoodEntry, deleteMoodEntry } = useMoodEntries();
+import { usePersistentState } from '@/lib/usePersistentState';
+
+export default function MoodView() {
+  const [moodEntries, setMoodEntries] = usePersistentState<MoodEntry[]>('moodEntries', []);
+import { useMoodEntries } from '@/hooks/use-mood-entries';
+
+export default function MoodView() {
+  const { moodEntries, createMoodEntry, updateMoodEntry, deleteMoodEntry } = useMoodEntries();
   
   const [moodScore, setMoodScore] = useState(5);
   const [anxietyLevel, setAnxietyLevel] = useState<number | undefined>(undefined);
@@ -52,6 +59,9 @@ export default function MoodView() {
     const entry: MoodEntry = {
       id: uuidv4(),
       timestamp: Date.now(),
+    const createdAt = Date.now();
+    await createMoodEntry({
+      timestamp: createdAt,
       moodScore,
       anxietyLevel,
       energyLevel,
@@ -61,6 +71,8 @@ export default function MoodView() {
     };
 
     await upsertMoodEntry(entry);
+      createdAt
+    });
     toast.success('Mood entry saved');
 
     setMoodScore(5);
@@ -80,14 +92,14 @@ export default function MoodView() {
     const dateTime = new Date(`${quickDate}T${quickTime}`);
     const timestamp = dateTime.getTime();
 
-    const entry: MoodEntry = {
-      id: uuidv4(),
+    await createMoodEntry({
       timestamp,
       moodScore: quickMoodScore,
       createdAt: Date.now()
     };
 
     await upsertMoodEntry(entry);
+    });
     toast.success('Quick mood logged');
     setQuickDialogOpen(false);
 
@@ -115,8 +127,7 @@ export default function MoodView() {
     const dateTime = new Date(`${editDate}T${editTime}`);
     const timestamp = dateTime.getTime();
 
-    const updatedEntry: MoodEntry = {
-      ...editingEntry,
+    const updates: Partial<MoodEntry> = {
       timestamp,
       moodScore: editMood,
       anxietyLevel: editAnxiety,
@@ -126,6 +137,7 @@ export default function MoodView() {
     };
 
     await upsertMoodEntry(updatedEntry);
+    await updateMoodEntry(editingEntry.id, updates);
     toast.success('Mood entry updated');
     setEditDialogOpen(false);
   };

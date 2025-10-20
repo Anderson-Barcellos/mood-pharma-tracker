@@ -9,6 +9,8 @@ import type { Medication, MedicationDose } from '../lib/types';
 import { toast } from 'sonner';
 import { safeFormat } from '@/lib/utils';
 import { useDoses } from '@/hooks/useDoses';
+import { usePersistentState } from '../lib/usePersistentState';
+import { useDoses } from '@/hooks/use-doses';
 
 interface MedicationDosesViewProps {
   medication: Medication;
@@ -18,6 +20,8 @@ interface MedicationDosesViewProps {
 
 export default function MedicationDosesView({ medication, open, onOpenChange }: MedicationDosesViewProps) {
   const { doses, upsertDose, deleteDose } = useDoses();
+  const [doses, setDoses] = usePersistentState<MedicationDose[]>('doses', []);
+  const { doses, updateDose, deleteDose } = useDoses(medication.id);
   const [editingDose, setEditingDose] = useState<MedicationDose | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editAmount, setEditAmount] = useState('');
@@ -27,6 +31,7 @@ export default function MedicationDosesView({ medication, open, onOpenChange }: 
   const medicationDoses = doses
     .filter(d => d.medicationId === medication.id)
     .sort((a, b) => b.timestamp - a.timestamp);
+  const medicationDoses = doses;
 
   const handleEdit = (dose: MedicationDose) => {
     setEditingDose(dose);
@@ -49,6 +54,10 @@ export default function MedicationDosesView({ medication, open, onOpenChange }: 
     };
 
     await upsertDose(updatedDose);
+    await updateDose(editingDose.id, {
+      doseAmount: parseFloat(editAmount),
+      timestamp
+    });
 
     toast.success('Dose updated successfully');
     setEditDialogOpen(false);
