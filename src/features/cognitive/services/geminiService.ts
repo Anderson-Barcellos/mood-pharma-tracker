@@ -1,3 +1,6 @@
+import { PRIMARY_AI_SERVICE_LABEL, FALLBACK_DATASET_LABEL, buildRemoteServiceUnavailableMessage } from '@/shared/constants/ai';
+
+export type MatrixSource = 'spark' | 'gemini' | 'fallback';
 import { GeminiClient, GeminiClientError } from '@/lib/geminiClient';
 
 export type MatrixSource = 'gemini' | 'fallback';
@@ -245,7 +248,7 @@ const parsePayload = (raw: string): GeminiMatrixPayload => {
 
 const buildFallback = (index?: number): MatrixGenerationResult => {
   if (FALLBACK_MATRICES.length === 0) {
-    throw new MatrixGenerationError('No fallback dataset configured', 'FALLBACK_MISSING');
+    throw new MatrixGenerationError(`Nenhum ${FALLBACK_DATASET_LABEL} configurado`, 'FALLBACK_MISSING');
   }
 
   const baseIndex = typeof index === 'number' ? index % FALLBACK_MATRICES.length : Math.floor(Math.random() * FALLBACK_MATRICES.length);
@@ -261,6 +264,14 @@ const buildFallback = (index?: number): MatrixGenerationResult => {
     source: 'fallback'
   };
 };
+
+const requestSparkMatrix = async (prompt: string): Promise<MatrixGenerationResult> => {
+  if (typeof window === 'undefined' || !window.spark?.llm) {
+    throw new MatrixGenerationError(
+      `${buildRemoteServiceUnavailableMessage()} Cliente do ${PRIMARY_AI_SERVICE_LABEL} indisponível`,
+      'SPARK_UNAVAILABLE'
+    );
+  }
 
 export const fetchRavenMatrix = async (prompt: string, signal?: AbortSignal): Promise<MatrixGenerationResult> => {
   try {
@@ -279,6 +290,12 @@ export const fetchRavenMatrix = async (prompt: string, signal?: AbortSignal): Pr
     if (error instanceof MatrixGenerationError) {
       throw error;
     }
+    throw new MatrixGenerationError(`Falha na requisição do ${PRIMARY_AI_SERVICE_LABEL}`, 'SPARK_ERROR', error);
+  }
+};
+
+const requestGeminiMatrix = async (prompt: string, signal?: AbortSignal): Promise<MatrixGenerationResult> => {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
     if (error instanceof GeminiClientError) {
       if (error.code === 'CONFIG_ERROR') {
@@ -324,6 +341,10 @@ export const requestMatrix = async (
   }
 
   if (!allowFallback) {
+    throw new MatrixGenerationError(
+      `${buildRemoteServiceUnavailableMessage()} e fallback desativado`,
+      'FALLBACK_REQUIRED'
+    );
     if (lastError?.code === 'GEMINI_UNAVAILABLE') {
       throw lastError;
     }
