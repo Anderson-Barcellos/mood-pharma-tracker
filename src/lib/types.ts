@@ -41,11 +41,16 @@ export interface MoodEntry {
 export interface Matrix {
   matrixId: string;
   svgContent: string;
+  options: string[];
+  patterns: string[];
   correctAnswer: number;
   userAnswer: number;
   responseTime: number;
   wasCorrect: boolean;
   explanation: string;
+  options?: string[];
+  patterns?: string[];
+  source?: 'spark' | 'gemini' | 'fallback';
 }
 
 export interface CognitiveTest {

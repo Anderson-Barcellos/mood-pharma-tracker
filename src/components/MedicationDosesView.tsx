@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { useKV } from '@github/spark/hooks';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,8 +7,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Pencil, Trash } from '@phosphor-icons/react';
 import type { Medication, MedicationDose } from '../lib/types';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
 import { safeFormat } from '@/lib/utils';
+import { useDoses } from '@/hooks/use-doses';
 
 interface MedicationDosesViewProps {
   medication: Medication;
@@ -18,48 +17,42 @@ interface MedicationDosesViewProps {
 }
 
 export default function MedicationDosesView({ medication, open, onOpenChange }: MedicationDosesViewProps) {
-  const [doses, setDoses] = useKV<MedicationDose[]>('doses', []);
+  const { doses, updateDose, deleteDose } = useDoses(medication.id);
   const [editingDose, setEditingDose] = useState<MedicationDose | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editAmount, setEditAmount] = useState('');
   const [editDate, setEditDate] = useState('');
   const [editTime, setEditTime] = useState('');
 
-  const medicationDoses = (doses || [])
-    .filter(d => d.medicationId === medication.id)
-    .sort((a, b) => b.timestamp - a.timestamp);
+  const medicationDoses = doses;
 
   const handleEdit = (dose: MedicationDose) => {
     setEditingDose(dose);
     setEditAmount(dose.doseAmount.toString());
-    const date = new Date(dose.timestamp);
     setEditDate(safeFormat(dose.timestamp, 'yyyy-MM-dd', ''));
     setEditTime(safeFormat(dose.timestamp, 'HH:mm', ''));
     setEditDialogOpen(true);
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editingDose || !editAmount) return;
 
     const dateTime = new Date(`${editDate}T${editTime}`);
     const timestamp = dateTime.getTime();
 
-    setDoses((current) =>
-      (current || []).map(d =>
-        d.id === editingDose.id
-          ? { ...d, doseAmount: parseFloat(editAmount), timestamp }
-          : d
-      )
-    );
+    await updateDose(editingDose.id, {
+      doseAmount: parseFloat(editAmount),
+      timestamp
+    });
 
     toast.success('Dose updated successfully');
     setEditDialogOpen(false);
     setEditingDose(null);
   };
 
-  const handleDelete = (doseId: string) => {
+  const handleDelete = async (doseId: string) => {
     if (confirm('Are you sure you want to delete this dose entry?')) {
-      setDoses((current) => (current || []).filter(d => d.id !== doseId));
+      await deleteDose(doseId);
       toast.success('Dose deleted');
     }
   };
