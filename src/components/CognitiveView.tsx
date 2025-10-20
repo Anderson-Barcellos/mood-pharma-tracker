@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { useKV } from '@github/spark/hooks';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Brain, Play } from '@phosphor-icons/react';
@@ -17,7 +16,7 @@ import {
   Bar,
   Line
 } from 'recharts';
-import { safeFormat } from '@/lib/utils';
+import { cn, safeFormat } from '@/lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   requestMatrix,
@@ -27,24 +26,9 @@ import {
   MatrixGenerationError,
   type MatrixSource
 } from '@/lib/gemini';
+import { usePersistentState } from '../lib/usePersistentState';
 
 const matrixPrompt = `You are an expert in psychometrics creating Raven's Progressive Matrices.
-import { XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Bar, Line, ComposedChart } from 'recharts';
-import { safeFormat } from '@/lib/utils';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Bar, ComposedChart } from 'recharts';
-import { cn, safeFormat } from '@/lib/utils';
-
-export default function CognitiveView() {
-  const [cognitiveTests, setCognitiveTests] = useKV<CognitiveTest[]>('cognitiveTests', []);
-  const [testInProgress, setTestInProgress] = useState(false);
-  const [currentMatrixIndex, setCurrentMatrixIndex] = useState(0);
-  const [currentMatrix, setCurrentMatrix] = useState<Matrix | null>(null);
-  const [matrices, setMatrices] = useState<Matrix[]>([]);
-  const [startTime, setStartTime] = useState<number>(0);
-  const [isLoading, setIsLoading] = useState(false);
-
-  const generateMatrix = async (): Promise<Matrix | null> => {
-    const prompt = `You are an expert in psychometrics creating Raven's Progressive Matrices.
 
 INSTRUCTIONS:
 1. Create a 3x3 matrix where the first 8 cells follow a logical pattern
@@ -83,7 +67,7 @@ type GenerateMatrixOptions = {
 };
 
 export default function CognitiveView() {
-  const [cognitiveTests, setCognitiveTests] = useKV<CognitiveTest[]>('cognitiveTests', []);
+  const [cognitiveTests, setCognitiveTests] = usePersistentState<CognitiveTest[]>('cognitiveTests', []);
   const [testInProgress, setTestInProgress] = useState(false);
   const [currentMatrixIndex, setCurrentMatrixIndex] = useState(0);
   const [currentMatrix, setCurrentMatrix] = useState<Matrix | null>(null);
@@ -95,6 +79,7 @@ export default function CognitiveView() {
   const [matrixSource, setMatrixSource] = useState<MatrixSource | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [showOfflinePrompt, setShowOfflinePrompt] = useState(false);
+  const [showResults, setShowResults] = useState(false);
 
   const fallbackMatrices = useMemo(() => getFallbackMatrices(), []);
   const fallbackCount = fallbackMatrices.length;
@@ -122,9 +107,7 @@ export default function CognitiveView() {
       if (result.source === 'fallback' && fallbackCount > 0) {
         setOfflineIndex((prev) => (prev + 1) % fallbackCount);
         setOfflineRemaining((prev) => (prev > 0 ? prev - 1 : 0));
-      }
-
-      if (result.source !== 'fallback') {
+      } else {
         setOfflineRemaining(fallbackCount);
       }
 
@@ -132,43 +115,20 @@ export default function CognitiveView() {
       setAiError(null);
       setShowOfflinePrompt(false);
 
+      const safeOptions = Array.isArray(result.options) ? result.options : [];
+      const safePatterns = Array.isArray(result.patterns) ? result.patterns : [];
+
       return {
         matrixId: result.id ?? uuidv4(),
         svgContent: result.matrixSVG,
+        options: safeOptions,
+        patterns: safePatterns,
         correctAnswer: result.correctAnswer,
         userAnswer: -1,
         responseTime: 0,
         wasCorrect: false,
-        explanation: result.explanation,
-        options: result.options,
-        patterns: result.patterns,
-        source: result
-      const response = await window.spark.llm(prompt, 'gpt-4o', true);
-      const data = JSON.parse(response);
-
-      const options = Array.isArray(data.options)
-        ? data.options.filter((option: unknown) => typeof option === 'string')
-        : [];
-      const patterns = Array.isArray(data.patterns)
-        ? data.patterns.filter((pattern: unknown) => typeof pattern === 'string')
-        : [];
-
-      if (typeof data.matrixSVG !== 'string' || options.length === 0 || typeof data.correctAnswer !== 'number') {
-        throw new Error('Invalid matrix payload');
-      }
-
-      const boundedCorrectAnswer = Math.max(0, Math.min(options.length - 1, data.correctAnswer));
-
-      return {
-        matrixId: uuidv4(),
-        svgContent: data.matrixSVG,
-        options,
-        patterns,
-        correctAnswer: boundedCorrectAnswer,
-        userAnswer: -1,
-        responseTime: 0,
-        wasCorrect: false,
-        explanation: typeof data.explanation === 'string' ? data.explanation : 'No explanation provided.'
+        explanation: result.explanation ?? 'No explanation provided.',
+        source: result.source
       };
     } catch (error) {
       if (error instanceof MatrixGenerationError) {
@@ -303,6 +263,7 @@ export default function CognitiveView() {
 
     setCognitiveTests((current) => [...(current || []), test]);
     setTestInProgress(false);
+    setShowResults(true);
 
     toast.success('Test completed!', {
       description: `Score: ${totalScore.toFixed(1)} | Accuracy: ${(accuracy * 100).toFixed(0)}%`

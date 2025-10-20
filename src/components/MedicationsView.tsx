@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useKV } from '@github/spark/hooks';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -12,6 +11,7 @@ import { Plus, Pill, Pencil, Trash, ClockCounterClockwise } from '@phosphor-icon
 import type { Medication, MedicationCategory, MedicationDose } from '../lib/types';
 import { v4 as uuidv4 } from 'uuid';
 import MedicationDosesView from './MedicationDosesView';
+import { usePersistentState } from '../lib/usePersistentState';
 
 const MEDICATION_CATEGORIES: MedicationCategory[] = [
   'SSRI',
@@ -24,8 +24,8 @@ const MEDICATION_CATEGORIES: MedicationCategory[] = [
 ];
 
 export default function MedicationsView() {
-  const [medications, setMedications] = useKV<Medication[]>('medications', []);
-  const [doses] = useKV<MedicationDose[]>('doses', []);
+  const [medications, setMedications] = usePersistentState<Medication[]>('medications', []);
+  const [doses] = usePersistentState<MedicationDose[]>('doses', []);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMed, setEditingMed] = useState<Medication | null>(null);
   const [viewDosesMed, setViewDosesMed] = useState<Medication | null>(null);

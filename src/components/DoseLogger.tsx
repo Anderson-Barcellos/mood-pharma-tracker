@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useKV } from '@github/spark/hooks';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,10 +11,11 @@ import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { safeFormat } from '@/lib/utils';
+import { usePersistentState } from '../lib/usePersistentState';
 
 export default function DoseLogger() {
-  const [medications] = useKV<Medication[]>('medications', []);
-  const [doses, setDoses] = useKV<MedicationDose[]>('doses', []);
+  const [medications] = usePersistentState<Medication[]>('medications', []);
+  const [doses, setDoses] = usePersistentState<MedicationDose[]>('doses', []);
   const [selectedMedicationId, setSelectedMedicationId] = useState('');
   const [doseAmount, setDoseAmount] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);

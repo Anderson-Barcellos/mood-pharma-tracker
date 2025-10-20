@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useKV } from '@github/spark/hooks';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +8,7 @@ import { Pencil, Trash } from '@phosphor-icons/react';
 import type { Medication, MedicationDose } from '../lib/types';
 import { toast } from 'sonner';
 import { safeFormat } from '@/lib/utils';
+import { usePersistentState } from '../lib/usePersistentState';
 
 interface MedicationDosesViewProps {
   medication: Medication;
@@ -17,7 +17,7 @@ interface MedicationDosesViewProps {
 }
 
 export default function MedicationDosesView({ medication, open, onOpenChange }: MedicationDosesViewProps) {
-  const [doses, setDoses] = useKV<MedicationDose[]>('doses', []);
+  const [doses, setDoses] = usePersistentState<MedicationDose[]>('doses', []);
   const [editingDose, setEditingDose] = useState<MedicationDose | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editAmount, setEditAmount] = useState('');

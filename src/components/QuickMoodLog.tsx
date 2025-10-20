@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useKV } from '@github/spark/hooks';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,9 +11,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { safeFormat } from '@/lib/utils';
+import { usePersistentState } from '../lib/usePersistentState';
 
 export default function QuickMoodLog() {
-  const [moodEntries, setMoodEntries] = useKV<MoodEntry[]>('moodEntries', []);
+  const [moodEntries, setMoodEntries] = usePersistentState<MoodEntry[]>('moodEntries', []);
   const [moodScore, setMoodScore] = useState(5);
   const [dialogOpen, setDialogOpen] = useState(false);
   

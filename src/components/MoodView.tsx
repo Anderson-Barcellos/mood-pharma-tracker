@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react';
-import { useKV } from '@github/spark/hooks';
 import { format } from 'date-fns';
 import { Smiley, SmileyMeh, SmileySad, Plus, List, Pencil, Trash } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
@@ -14,9 +13,10 @@ import { toast } from 'sonner';
 import type { MoodEntry } from '@/lib/types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { safeFormat } from '@/lib/utils';
+import { usePersistentState } from '@/lib/usePersistentState';
 
 export default function MoodView() {
-  const [moodEntries, setMoodEntries] = useKV<MoodEntry[]>('moodEntries', []);
+  const [moodEntries, setMoodEntries] = usePersistentState<MoodEntry[]>('moodEntries', []);
   
   const [moodScore, setMoodScore] = useState(5);
   const [anxietyLevel, setAnxietyLevel] = useState<number | undefined>(undefined);
