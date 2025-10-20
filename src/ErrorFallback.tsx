@@ -1,5 +1,5 @@
-import { Alert, AlertTitle, AlertDescription } from "./components/ui/alert";
-import { Button } from "./components/ui/button";
+import { Alert, AlertTitle, AlertDescription } from '@/shared/ui/alert';
+import { Button } from '@/shared/ui/button';
 
 import { AlertTriangleIcon, RefreshCwIcon } from "lucide-react";
 

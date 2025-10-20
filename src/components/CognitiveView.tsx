@@ -1,8 +1,30 @@
 import { useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Brain, Play } from '@phosphor-icons/react';
+import { Brain, Play, Check, X, WarningCircle } from '@phosphor-icons/react';
 import type { CognitiveTest, Matrix } from '../lib/types';
+import { v4 as uuidv4 } from 'uuid';
+import { toast } from 'sonner';
+import { Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Bar, ComposedChart } from 'recharts';
+import { safeFormat } from '@/lib/utils';
+import { GeminiUnavailableError, hasGeminiSupport, requestRavensMatrix } from '@/lib/gemini';
+
+export default function CognitiveView() {
+  const [cognitiveTests, setCognitiveTests] = useKV<CognitiveTest[]>('cognitiveTests', []);
+  const [testInProgress, setTestInProgress] = useState(false);
+  const [currentMatrixIndex, setCurrentMatrixIndex] = useState(0);
+  const [currentMatrix, setCurrentMatrix] = useState<Matrix | null>(null);
+  const [matrices, setMatrices] = useState<Matrix[]>([]);
+  const [startTime, setStartTime] = useState<number>(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const [aiUnavailable, setAiUnavailable] = useState(false);
+  const [useFallbackMatrices, setUseFallbackMatrices] = useState(false);
+
+  const generateMatrix = async (useFallback: boolean): Promise<Matrix | null> => {
+    const prompt = `You are an expert in psychometrics creating Raven's Progressive Matrices.
+import { Brain, Play } from '@phosphor-icons/react';
+import type { Matrix } from '../lib/types';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 import {
@@ -27,13 +49,14 @@ import {
   type MatrixSource
 } from '@/lib/gemini';
 import { usePersistentState } from '../lib/usePersistentState';
+import { useCognitiveTests } from '@/hooks/use-cognitive-tests';
 
 const matrixPrompt = `You are an expert in psychometrics creating Raven's Progressive Matrices.
 
 INSTRUCTIONS:
-1. Create a 3x3 matrix where the first 8 cells follow a logical pattern
-2. The 9th cell (bottom right) is empty - this is what the user must complete
-3. Difficulty level: medium
+1. Create a 3x3 matrix where the first 8 cells follow a logical pattern.
+2. Leave the bottom-right cell empty for the user to solve.
+3. Difficulty level: medium.
 
 PATTERN RULES (choose 1-2 simultaneous patterns):
 - Numerical progression of elements
@@ -41,7 +64,7 @@ PATTERN RULES (choose 1-2 simultaneous patterns):
 - Shape transformation (circle → square → triangle)
 - Fill pattern (solid → striped → empty)
 - Spatial position changes
-- Overlapping/layering
+- Overlapping or layering
 
 OUTPUT FORMAT (JSON):
 {
@@ -55,12 +78,12 @@ OUTPUT FORMAT (JSON):
 TECHNICAL REQUIREMENTS:
 - Matrix: viewBox 0 0 600 600, cells 200x200 each
 - Options: viewBox 0 0 200 200 each
-- Use distinct but not vibrant colors
-- Subtle grid delimiting cells
+- Use distinct but not overly vibrant colors
+- Subtle grid delineating cells
 - Cell 9 empty/gray with question mark
-- 1 correct answer + 5 plausible distractors
+- Provide 1 correct answer + 5 distractors
 
-Return ONLY valid JSON, no markdown or additional text.`;
+Return ONLY valid JSON, no markdown or extra commentary.`;
 
 type GenerateMatrixOptions = {
   offline?: boolean;
@@ -68,12 +91,14 @@ type GenerateMatrixOptions = {
 
 export default function CognitiveView() {
   const [cognitiveTests, setCognitiveTests] = usePersistentState<CognitiveTest[]>('cognitiveTests', []);
+  const { cognitiveTests, createCognitiveTest } = useCognitiveTests();
   const [testInProgress, setTestInProgress] = useState(false);
   const [currentMatrixIndex, setCurrentMatrixIndex] = useState(0);
   const [currentMatrix, setCurrentMatrix] = useState<Matrix | null>(null);
   const [matrices, setMatrices] = useState<Matrix[]>([]);
   const [startTime, setStartTime] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [showResults, setShowResults] = useState(false);
   const [offlineMode, setOfflineMode] = useState(false);
   const [offlineIndex, setOfflineIndex] = useState(0);
   const [matrixSource, setMatrixSource] = useState<MatrixSource | null>(null);
@@ -93,6 +118,17 @@ export default function CognitiveView() {
     }
 
     try {
+      const data = await requestRavensMatrix(prompt, { useFallback });
+
+      return {
+        matrixId: uuidv4(),
+        svgContent: data.matrixSVG,
+        correctAnswer: data.correctAnswer,
+        userAnswer: -1,
+        responseTime: 0,
+        wasCorrect: false,
+        explanation: data.explanation
+      };
       const result = await requestMatrix(matrixPrompt, {
         allowFallback: offline,
         fallbackIndex: offline ? offlineIndex : undefined
@@ -130,6 +166,18 @@ export default function CognitiveView() {
         explanation: result.explanation ?? 'No explanation provided.',
         source: result.source
       };
+        return {
+          matrixId: result.id ?? uuidv4(),
+          svgContent: result.matrixSVG,
+          correctAnswer: result.correctAnswer,
+          userAnswer: -1,
+          responseTime: 0,
+          wasCorrect: false,
+          explanation: result.explanation,
+          options: result.options,
+          patterns: result.patterns,
+          source: result.source
+        };
     } catch (error) {
       if (error instanceof MatrixGenerationError) {
         if (error.code === 'FALLBACK_REQUIRED' || error.code === 'GEMINI_UNAVAILABLE' || error.code === 'SPARK_UNAVAILABLE') {
@@ -145,10 +193,22 @@ export default function CognitiveView() {
       }
 
       console.error('Error generating matrix:', error);
-      toast.error('Failed to generate cognitive test matrix');
+      if (error instanceof GeminiUnavailableError) {
+        setAiUnavailable(true);
+        toast.error('Bah, o Spark sumiu. Usa o teste cacheado ou tenta de novo mais tarde.');
+      } else {
+        toast.error('Failed to generate cognitive test matrix');
+      }
       return null;
     }
   };
+
+  const startTest = async ({ useFallback = false }: { useFallback?: boolean } = {}) => {
+    if (!useFallback && !hasGeminiSupport()) {
+      setAiUnavailable(true);
+      toast.info('Tchê, não rolou acesso à IA agora. Quer puxar um teste cacheado?');
+      return;
+    }
 
   const startTest = async ({ offline = offlineMode }: GenerateMatrixOptions = {}) => {
     setOfflineMode(offline);
@@ -165,6 +225,11 @@ export default function CognitiveView() {
     setCurrentMatrixIndex(0);
     setMatrices([]);
     setStartTime(Date.now());
+    setAiUnavailable(false);
+    setUseFallbackMatrices(useFallback);
+
+    setIsLoading(true);
+    const matrix = await generateMatrix(useFallback);
 
     
     setShowResults(false);
@@ -177,6 +242,9 @@ export default function CognitiveView() {
       setStartTime(Date.now());
     } else {
       setTestInProgress(false);
+      if (!useFallback) {
+        toast.error('Failed to start test');
+      }
       setOfflineMode(offline);
     }
   };
@@ -222,6 +290,8 @@ export default function CognitiveView() {
 
     if (currentMatrixIndex < 3) {
       setIsLoading(true);
+      setStartTime(Date.now());
+      const nextMatrix = await generateMatrix(useFallbackMatrices);
       const nextMatrix = await generateMatrix();
       setIsLoading(false);
 
@@ -230,14 +300,22 @@ export default function CognitiveView() {
         setCurrentMatrixIndex(currentMatrixIndex + 1);
         setStartTime(Date.now());
       } else {
-        finishTest(updatedMatrices);
+        await finishTest(updatedMatrices);
       }
     } else {
-      finishTest(updatedMatrices);
+      await finishTest(updatedMatrices);
     }
   };
 
   const finishTest = (completedMatrices: Matrix[]) => {
+    if (completedMatrices.length === 0) {
+      setTestInProgress(false);
+      setIsLoading(false);
+      setUseFallbackMatrices(false);
+      return;
+    }
+
+  const finishTest = async (completedMatrices: Matrix[]) => {
     const totalCorrect = completedMatrices.filter(m => m.wasCorrect).length;
     const accuracy = completedMatrices.length > 0 ? totalCorrect / completedMatrices.length : 0;
     const avgResponseTime =
@@ -251,29 +329,29 @@ export default function CognitiveView() {
       return sum + matrixScore;
     }, 0);
 
-    const test: CognitiveTest = {
-      id: uuidv4(),
-      timestamp: Date.now(),
+    const now = Date.now();
+    await createCognitiveTest({
+      timestamp: now,
       matrices: completedMatrices,
       totalScore,
       averageResponseTime: avgResponseTime,
       accuracy,
-      createdAt: Date.now()
-    };
-
-    setCognitiveTests((current) => [...(current || []), test]);
+      createdAt: now
+    });
+    setShowResults(true);
     setTestInProgress(false);
     setShowResults(true);
+    setUseFallbackMatrices(false);
 
     toast.success('Test completed!', {
       description: `Score: ${totalScore.toFixed(1)} | Accuracy: ${(accuracy * 100).toFixed(0)}%`
     });
   };
 
-  const recentTests = [...(cognitiveTests || [])].sort((a, b) => b.timestamp - a.timestamp).slice(0, 10);
+  const recentTests = [...cognitiveTests].sort((a, b) => b.timestamp - a.timestamp).slice(0, 10);
 
   const chartData = useMemo(() => {
-    const sortedTests = [...(cognitiveTests || [])].sort((a, b) => a.timestamp - b.timestamp);
+    const sortedTests = [...cognitiveTests].sort((a, b) => a.timestamp - b.timestamp);
 
     return sortedTests.map(test => ({
       timestamp: safeFormat(test.timestamp, 'HH:mm', 'N/A'),
@@ -292,6 +370,10 @@ export default function CognitiveView() {
           <p className="text-muted-foreground">Matrix {currentMatrixIndex + 1} of 4</p>
         </div>
 
+        {useFallbackMatrices && (
+          <div className="p-4 border border-dashed rounded-lg bg-muted/50 text-sm text-muted-foreground">
+            Teste rodando com o dataset cacheado enquanto a IA não volta.
+          </div>
         {matrixSource === 'fallback' && (
           <Alert className="border-amber-500/40 bg-amber-500/10">
             <AlertTitle>Modo offline ativado</AlertTitle>
@@ -364,6 +446,24 @@ export default function CognitiveView() {
         <p className="text-muted-foreground">Measure your cognitive performance over time</p>
       </div>
 
+      {aiUnavailable && !testInProgress && (
+        <Card className="border-dashed">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <WarningCircle className="w-5 h-5 text-destructive" weight="bold" />
+              Assistente de IA indisponível
+            </CardTitle>
+            <CardDescription>
+              Bah, índio velho, o Spark ou o Gemini deram uma sumida. Quer cancelar ou carregar um teste cacheado pra treinar mesmo assim?
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2 sm:flex-row">
+            <Button variant="outline" className="sm:w-auto" onClick={() => { setAiUnavailable(false); setUseFallbackMatrices(false); }}>
+              Cancelar
+            </Button>
+            <Button className="sm:w-auto" onClick={() => startTest({ useFallback: true })}>
+              Carregar teste cacheado
+            </Button>
       {showResults && matrices.length > 0 && (
         <Card>
           <CardHeader>
@@ -447,6 +547,7 @@ export default function CognitiveView() {
               </ul>
             </div>
           </div>
+          <Button onClick={() => startTest()} className="w-full" size="lg">
 
           {aiError && (
             <Alert className="border-destructive/40 bg-destructive/10">
