@@ -1,3 +1,5 @@
+import { PRIMARY_AI_SERVICE_LABEL, FALLBACK_DATASET_LABEL, buildRemoteServiceUnavailableMessage } from '@/shared/constants/ai';
+
 const env = import.meta.env as Record<string, string | undefined>;
 
 const GEMINI_API_URL = env.VITE_GEMINI_API_URL ?? '';
@@ -123,7 +125,9 @@ function buildGeminiUrl(): string {
 
 async function requestThroughSpark(prompt: string): Promise<string> {
   if (!isSparkAvailable() || !window.spark?.llm) {
-    throw new GeminiUnavailableError('Spark LLM not available');
+    throw new GeminiUnavailableError(
+      `${buildRemoteServiceUnavailableMessage()} Cliente do ${PRIMARY_AI_SERVICE_LABEL} indisponível`
+    );
   }
   return window.spark.llm(prompt, 'gpt-4o', true);
 }
@@ -450,7 +454,7 @@ const parsePayload = (raw: string): GeminiMatrixPayload => {
 
 const buildFallback = (index?: number): MatrixGenerationResult => {
   if (FALLBACK_MATRICES.length === 0) {
-    throw new MatrixGenerationError('No fallback dataset configured', 'FALLBACK_MISSING');
+    throw new MatrixGenerationError(`Nenhum ${FALLBACK_DATASET_LABEL} configurado`, 'FALLBACK_MISSING');
   }
 
   const baseIndex = typeof index === 'number' ? index % FALLBACK_MATRICES.length : Math.floor(Math.random() * FALLBACK_MATRICES.length);
@@ -469,7 +473,10 @@ const buildFallback = (index?: number): MatrixGenerationResult => {
 
 const requestSparkMatrix = async (prompt: string): Promise<MatrixGenerationResult> => {
   if (typeof window === 'undefined' || !window.spark?.llm) {
-    throw new MatrixGenerationError('Spark LLM client not available', 'SPARK_UNAVAILABLE');
+    throw new MatrixGenerationError(
+      `${buildRemoteServiceUnavailableMessage()} Cliente do ${PRIMARY_AI_SERVICE_LABEL} indisponível`,
+      'SPARK_UNAVAILABLE'
+    );
   }
 
   try {
@@ -484,7 +491,7 @@ const requestSparkMatrix = async (prompt: string): Promise<MatrixGenerationResul
     if (error instanceof MatrixGenerationError) {
       throw error;
     }
-    throw new MatrixGenerationError('Spark LLM request failed', 'SPARK_ERROR', error);
+    throw new MatrixGenerationError(`Falha na requisição do ${PRIMARY_AI_SERVICE_LABEL}`, 'SPARK_ERROR', error);
   }
 };
 
@@ -573,7 +580,10 @@ export const requestMatrix = async (
   }
 
   if (!allowFallback) {
-    throw new MatrixGenerationError('AI providers unavailable and fallback disabled', 'FALLBACK_REQUIRED');
+    throw new MatrixGenerationError(
+      `${buildRemoteServiceUnavailableMessage()} e fallback desativado`,
+      'FALLBACK_REQUIRED'
+    );
   }
 
   return buildFallback(fallbackIndex);

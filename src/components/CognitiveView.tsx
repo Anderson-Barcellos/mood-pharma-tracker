@@ -8,6 +8,13 @@ import { toast } from 'sonner';
 import { Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Bar, ComposedChart } from 'recharts';
 import { safeFormat } from '@/lib/utils';
 import { GeminiUnavailableError, hasGeminiSupport, requestRavensMatrix } from '@/lib/gemini';
+import {
+  PRIMARY_AI_SERVICE_LABEL,
+  OFFLINE_MODE_LABEL,
+  FALLBACK_DATASET_LABEL,
+  buildRemoteServiceUnavailableMessage,
+  buildOfflineSuggestionMessage
+} from '@/shared/constants/ai';
 
 export default function CognitiveView() {
   const [cognitiveTests, setCognitiveTests] = useKV<CognitiveTest[]>('cognitiveTests', []);
@@ -109,7 +116,9 @@ export default function CognitiveView() {
 
   const generateMatrix = async ({ offline = offlineMode }: GenerateMatrixOptions = {}): Promise<Matrix | null> => {
     if (!offline && !hasSparkSupport() && !hasGeminiSupport()) {
-      setAiError('A IA nativa não tá disponível no navegador, mas temos matrizes cacheadas pra quebrar o galho.');
+      setAiError(
+        `${buildRemoteServiceUnavailableMessage('no navegador')} Mas temos o ${FALLBACK_DATASET_LABEL} pra te salvar.`
+      );
       setShowOfflinePrompt(true);
       return null;
     }
@@ -132,7 +141,9 @@ export default function CognitiveView() {
       });
 
       if (result.source === 'fallback' && !offline) {
-        setAiError('Bah, nenhum provedor de IA respondeu agora. Quer usar o teste cacheado?');
+        setAiError(
+          `Bah, o ${PRIMARY_AI_SERVICE_LABEL} não respondeu agora. ${buildOfflineSuggestionMessage('continuar o treino')}`
+        );
         setShowOfflinePrompt(true);
         return null;
       }
@@ -165,7 +176,9 @@ export default function CognitiveView() {
     } catch (error) {
       if (error instanceof MatrixGenerationError) {
         if (error.code === 'FALLBACK_REQUIRED' || error.code === 'GEMINI_UNAVAILABLE' || error.code === 'SPARK_UNAVAILABLE') {
-          setAiError('Bah, a IA tá fora do ar agora. Tu pode cancelar ou rodar um teste cacheado.');
+          setAiError(
+            `Bah, o ${PRIMARY_AI_SERVICE_LABEL} deu uma oscilada. ${buildOfflineSuggestionMessage('seguir no teste')}`
+          );
           setShowOfflinePrompt(true);
           return null;
         }
@@ -179,9 +192,9 @@ export default function CognitiveView() {
       console.error('Error generating matrix:', error);
       if (error instanceof GeminiUnavailableError) {
         setAiUnavailable(true);
-        toast.error('Bah, o Spark sumiu. Usa o teste cacheado ou tenta de novo mais tarde.');
+        toast.error(`Bah, o ${PRIMARY_AI_SERVICE_LABEL} sumiu. ${buildOfflineSuggestionMessage('seguir praticando')}`);
       } else {
-        toast.error('Failed to generate cognitive test matrix');
+        toast.error(`Falhou ao requisitar matriz no ${PRIMARY_AI_SERVICE_LABEL}.`);
       }
       return null;
     }
@@ -190,7 +203,9 @@ export default function CognitiveView() {
   const startTest = async ({ useFallback = false }: { useFallback?: boolean } = {}) => {
     if (!useFallback && !hasGeminiSupport()) {
       setAiUnavailable(true);
-      toast.info('Tchê, não rolou acesso à IA agora. Quer puxar um teste cacheado?');
+      toast.info(
+        `Tchê, o ${PRIMARY_AI_SERVICE_LABEL} não respondeu agora. ${buildOfflineSuggestionMessage('continuar o treino')}`
+      );
       return;
     }
 
@@ -355,13 +370,14 @@ export default function CognitiveView() {
 
         {useFallbackMatrices && (
           <div className="p-4 border border-dashed rounded-lg bg-muted/50 text-sm text-muted-foreground">
-            Teste rodando com o dataset cacheado enquanto a IA não volta.
+            {`Teste rodando no ${FALLBACK_DATASET_LABEL} enquanto o ${PRIMARY_AI_SERVICE_LABEL} não volta.`}
           </div>
+        )}
         {matrixSource === 'fallback' && (
           <Alert className="border-amber-500/40 bg-amber-500/10">
             <AlertTitle>Modo offline ativado</AlertTitle>
             <AlertDescription>
-              Bah, a IA tá fora do ar. Estamos usando o conjunto cacheado de matrizes (restam {offlineRemaining} de {fallbackCount}).
+              {`Bah, o ${PRIMARY_AI_SERVICE_LABEL} tá fora do ar. Estamos usando o ${FALLBACK_DATASET_LABEL} (restam ${offlineRemaining} de ${fallbackCount}).`}
             </AlertDescription>
           </Alert>
         )}
@@ -437,7 +453,7 @@ export default function CognitiveView() {
               Assistente de IA indisponível
             </CardTitle>
             <CardDescription>
-              Bah, índio velho, o Spark ou o Gemini deram uma sumida. Quer cancelar ou carregar um teste cacheado pra treinar mesmo assim?
+              {`Bah, índio velho, o ${PRIMARY_AI_SERVICE_LABEL} ou o Gemini deram uma sumida. Quer cancelar ou ativar o ${OFFLINE_MODE_LABEL} pra treinar com o ${FALLBACK_DATASET_LABEL}?`}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-2 sm:flex-row">
@@ -538,7 +554,7 @@ export default function CognitiveView() {
               <AlertDescription>
                 {aiError}
                 <span className="mt-2 block text-xs text-muted-foreground">
-                  Temos {fallbackCount} matrizes cacheadas prontas pra rodar mesmo sem conexão com os provedores.
+                  Temos {fallbackCount} matrizes cacheadas prontas pra rodar mesmo sem conexão com o {PRIMARY_AI_SERVICE_LABEL}.
                 </span>
               </AlertDescription>
             </Alert>
@@ -547,7 +563,7 @@ export default function CognitiveView() {
           {showOfflinePrompt && (
             <div className="flex flex-col gap-3 rounded-lg border border-border/60 bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-muted-foreground">
-                Sem IA por enquanto. Quer carregar um teste cacheado ou deixar pra depois, índio velho?
+                {`Sem resposta do ${PRIMARY_AI_SERVICE_LABEL} agora. Quer ativar o ${OFFLINE_MODE_LABEL} e rodar o ${FALLBACK_DATASET_LABEL}, índio velho?`}
               </p>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={handleCancelOffline} disabled={testInProgress}>

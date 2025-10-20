@@ -13,9 +13,10 @@ export const ErrorFallback = ({ error, resetErrorBoundary }) => {
       <div className="w-full max-w-md">
         <Alert variant="destructive" className="mb-6">
           <AlertTriangleIcon />
-          <AlertTitle>This spark has encountered a runtime error</AlertTitle>
+          <AlertTitle>Mood & Pharma Tracker travou</AlertTitle>
           <AlertDescription>
-            Something unexpected happened while running the application. The error details are shown below. Contact the spark author and let them know about this issue.
+            Bah, tchê, rolou uma falha inesperada no app independente. O detalhe do erro tá logo abaixo.
+            Recarrega a página ou reinicia o processo local. Se continuar quebrando, limpa os dados locais e sobe de novo.
           </AlertDescription>
         </Alert>
         
@@ -32,7 +33,7 @@ export const ErrorFallback = ({ error, resetErrorBoundary }) => {
           variant="outline"
         >
           <RefreshCwIcon />
-          Try Again
+          Recarregar interface
         </Button>
       </div>
     </div>
