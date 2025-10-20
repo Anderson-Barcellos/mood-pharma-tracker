@@ -48,7 +48,7 @@ export interface Matrix {
   wasCorrect: boolean;
   explanation: string;
   patterns?: string[];
-  source?: 'spark' | 'gemini' | 'fallback';
+  source?: 'gemini' | 'fallback';
 }
 
 export interface CognitiveTest {
