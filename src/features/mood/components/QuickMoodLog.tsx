@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useKV } from '@github/spark/hooks';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
@@ -7,14 +6,13 @@ import { Label } from '@/shared/ui/label';
 import { Slider } from '@/shared/ui/slider';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/shared/ui/dialog';
 import { Smiley, SmileyMeh, SmileySad } from '@phosphor-icons/react';
-import type { MoodEntry } from '@/shared/types';
-import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { safeFormat } from '@/shared/utils';
+import { useMoodEntries } from '@/hooks/use-mood-entries';
 
 export default function QuickMoodLog() {
-  const [moodEntries, setMoodEntries] = useKV<MoodEntry[]>('moodEntries', []);
+  const { moodEntries, createMoodEntry } = useMoodEntries();
   const [moodScore, setMoodScore] = useState(5);
   const [dialogOpen, setDialogOpen] = useState(false);
   
@@ -28,18 +26,15 @@ export default function QuickMoodLog() {
     return <SmileySad className="w-6 h-6 text-destructive" weight="fill" />;
   };
 
-  const handleLogMood = () => {
+  const handleLogMood = async () => {
     const dateTime = new Date(`${selectedDate}T${selectedTime}`);
     const timestamp = dateTime.getTime();
 
-    const entry: MoodEntry = {
-      id: uuidv4(),
+    await createMoodEntry({
       timestamp,
       moodScore,
       createdAt: Date.now()
-    };
-
-    setMoodEntries((current) => [...(current || []), entry]);
+    });
     
     toast.success(`Mood logged: ${moodScore}/10`, {
       description: safeFormat(timestamp, 'MMM d, h:mm a')
@@ -53,7 +48,7 @@ export default function QuickMoodLog() {
     setSelectedTime(format(newNow, 'HH:mm'));
   };
 
-  const recentMoods = [...(moodEntries || [])].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
+  const recentMoods = [...moodEntries].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
 
   return (
     <Card>

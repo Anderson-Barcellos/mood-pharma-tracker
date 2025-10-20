@@ -1,8 +1,9 @@
-import { useCallback } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useCallback, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { db } from '@/core/database/db';
-import type { Medication } from '@/lib/types';
+import type { Medication } from '@/shared/types';
+import { usePersistentState } from '@/core/storage/persistent-store';
+
+const STORAGE_KEY = 'medications';
 
 interface MedicationCreateInput extends Omit<Medication, 'id' | 'createdAt' | 'updatedAt'> {
   id?: string;
@@ -14,58 +15,60 @@ interface MedicationUpdateInput extends Partial<Omit<Medication, 'id' | 'created
   updatedAt?: number;
 }
 
-export function useMedications() {
-  const queryResult = useLiveQuery(
-    async () => {
-      const records = await db.medications.orderBy('createdAt').reverse().toArray();
-      return records ?? [];
-    },
-    []
-  );
+function normalizeMedication(payload: MedicationCreateInput): Medication {
+  const now = Date.now();
+  return {
+    id: payload.id ?? uuidv4(),
+    name: payload.name,
+    brandName: payload.brandName,
+    category: payload.category,
+    halfLife: payload.halfLife,
+    volumeOfDistribution: payload.volumeOfDistribution,
+    bioavailability: payload.bioavailability,
+    absorptionRate: payload.absorptionRate ?? 1,
+    therapeuticRange: payload.therapeuticRange,
+    notes: payload.notes,
+    createdAt: payload.createdAt ?? now,
+    updatedAt: payload.updatedAt ?? now,
+  };
+}
 
-  const medications = queryResult ?? [];
+export function useMedications() {
+  const { value, setValue, isReady } = usePersistentState<Medication[]>(STORAGE_KEY, []);
+
+  const medications = useMemo(() => {
+    return [...value].sort((a, b) => b.createdAt - a.createdAt);
+  }, [value]);
 
   const createMedication = useCallback(async (payload: MedicationCreateInput) => {
-    const now = Date.now();
-    const record: Medication = {
-      id: payload.id ?? uuidv4(),
-      name: payload.name,
-      brandName: payload.brandName,
-      category: payload.category,
-      halfLife: payload.halfLife,
-      volumeOfDistribution: payload.volumeOfDistribution,
-      bioavailability: payload.bioavailability,
-      absorptionRate: payload.absorptionRate ?? 1,
-      therapeuticRange: payload.therapeuticRange,
-      notes: payload.notes,
-      createdAt: payload.createdAt ?? now,
-      updatedAt: payload.updatedAt ?? now
-    };
-
-    await db.medications.put(record);
-    return record;
-  }, []);
+    const medication = normalizeMedication(payload);
+    setValue((current) => [...current, medication]);
+    return medication;
+  }, [setValue]);
 
   const updateMedication = useCallback(async (id: string, updates: MedicationUpdateInput) => {
-    const now = Date.now();
-    await db.medications.update(id, {
-      ...updates,
-      updatedAt: updates.updatedAt ?? now
-    });
-  }, []);
+    const timestamp = updates.updatedAt ?? Date.now();
+    setValue((current) => current.map((medication) => (
+      medication.id === id
+        ? {
+            ...medication,
+            ...updates,
+            absorptionRate: updates.absorptionRate ?? medication.absorptionRate,
+            updatedAt: timestamp,
+          }
+        : medication
+    )));
+  }, [setValue]);
 
   const deleteMedication = useCallback(async (id: string) => {
-    await db.transaction('rw', db.medications, db.doses, async () => {
-      await db.medications.delete(id);
-      await db.doses.where('medicationId').equals(id).delete();
-    });
-  }, []);
+    setValue((current) => current.filter((medication) => medication.id !== id));
+  }, [setValue]);
 
   return {
     medications,
     createMedication,
     updateMedication,
     deleteMedication,
-    isLoading: queryResult === undefined
+    isLoading: !isReady,
   } as const;
 }

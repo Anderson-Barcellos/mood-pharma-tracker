@@ -1,8 +1,9 @@
-import { useCallback } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useCallback, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { db } from '@/core/database/db';
-import type { MedicationDose } from '@/lib/types';
+import type { MedicationDose } from '@/shared/types';
+import { usePersistentState } from '@/core/storage/persistent-store';
+
+const STORAGE_KEY = 'doses';
 
 interface DoseCreateInput extends Omit<MedicationDose, 'id' | 'createdAt'> {
   id?: string;
@@ -14,50 +15,48 @@ interface DoseUpdateInput extends Partial<Omit<MedicationDose, 'id' | 'createdAt
 }
 
 export function useDoses(medicationId?: string) {
-  const queryResult = useLiveQuery(
-    async () => {
-      if (medicationId) {
-        const records = await db.doses.where('medicationId').equals(medicationId).sortBy('timestamp');
-        return records.reverse();
-      }
+  const { value, setValue, isReady } = usePersistentState<MedicationDose[]>(STORAGE_KEY, []);
 
-      const records = await db.doses.orderBy('timestamp').reverse().toArray();
-      return records ?? [];
-    },
-    [medicationId]
-  );
-
-  const doses = queryResult ?? [];
+  const doses = useMemo(() => {
+    const source = medicationId
+      ? value.filter((dose) => dose.medicationId === medicationId)
+      : value;
+    return [...source].sort((a, b) => b.timestamp - a.timestamp);
+  }, [value, medicationId]);
 
   const createDose = useCallback(async (payload: DoseCreateInput) => {
     const timestamp = payload.timestamp ?? Date.now();
-    const record: MedicationDose = {
+    const dose: MedicationDose = {
       id: payload.id ?? uuidv4(),
       medicationId: payload.medicationId,
       timestamp,
       doseAmount: payload.doseAmount,
       route: payload.route,
       notes: payload.notes,
-      createdAt: payload.createdAt ?? Date.now()
+      createdAt: payload.createdAt ?? Date.now(),
     };
 
-    await db.doses.put(record);
-    return record;
-  }, []);
+    setValue((current) => [...current, dose]);
+    return dose;
+  }, [setValue]);
 
   const updateDose = useCallback(async (id: string, updates: DoseUpdateInput) => {
-    await db.doses.update(id, updates);
-  }, []);
+    setValue((current) => current.map((dose) => (
+      dose.id === id
+        ? { ...dose, ...updates }
+        : dose
+    )));
+  }, [setValue]);
 
   const deleteDose = useCallback(async (id: string) => {
-    await db.doses.delete(id);
-  }, []);
+    setValue((current) => current.filter((dose) => dose.id !== id));
+  }, [setValue]);
 
   return {
     doses,
     createDose,
     updateDose,
     deleteDose,
-    isLoading: queryResult === undefined
+    isLoading: !isReady,
   } as const;
 }

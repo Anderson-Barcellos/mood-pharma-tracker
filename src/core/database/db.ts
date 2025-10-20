@@ -1,87 +1,19 @@
-import Dexie, { type Table } from 'dexie';
-import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from '@/lib/types';
+import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from '@/shared/types';
+import { getStoredValue, setStoredValue } from '@/core/storage/persistent-store';
 
 type LegacyKey = 'medications' | 'doses' | 'moodEntries' | 'cognitiveTests';
 
-interface AppMetadata {
-  key: string;
-  value: unknown;
-  updatedAt: number;
-}
-
-class MoodPharmaDatabase extends Dexie {
-  medications!: Table<Medication, string>;
-  doses!: Table<MedicationDose, string>;
-  moodEntries!: Table<MoodEntry, string>;
-  cognitiveTests!: Table<CognitiveTest, string>;
-  metadata!: Table<AppMetadata, string>;
-
-  constructor() {
-    super('MoodPharmaTrackerDB');
-
-    this.version(1).stores({
-      medications: 'id, name, category, createdAt, updatedAt',
-      doses: 'id, medicationId, timestamp, createdAt',
-      moodEntries: 'id, timestamp, createdAt',
-      cognitiveTests: 'id, timestamp, createdAt'
-    });
-
-    this.version(2)
-      .stores({
-        medications: 'id, name, category, createdAt, updatedAt',
-        doses: 'id, medicationId, timestamp, createdAt',
-        moodEntries: 'id, timestamp, createdAt, moodScore',
-        cognitiveTests: 'id, timestamp, createdAt, totalScore',
-        metadata: '&key, updatedAt'
-      })
-      .upgrade(async (transaction) => {
-        const now = Date.now();
-
-        await transaction.table('medications').toCollection().modify((med: Medication) => {
-          if (!med.createdAt) {
-            med.createdAt = now;
-          }
-          if (!med.updatedAt) {
-            med.updatedAt = med.createdAt;
-          }
-        });
-
-        await transaction.table('doses').toCollection().modify((dose: MedicationDose) => {
-          if (!dose.createdAt) {
-            dose.createdAt = dose.timestamp ?? now;
-          }
-        });
-
-        await transaction.table('moodEntries').toCollection().modify((entry: MoodEntry) => {
-          if (!entry.createdAt) {
-            entry.createdAt = entry.timestamp ?? now;
-          }
-        });
-
-        await transaction.table('cognitiveTests').toCollection().modify((test: CognitiveTest) => {
-          if (!test.createdAt) {
-            test.createdAt = test.timestamp ?? now;
-          }
-        });
-      });
-  }
-}
-
-export const db = new MoodPharmaDatabase();
-
-const MIGRATION_FLAG_KEY = 'legacyKvMigration';
-const LEGACY_KEYS: LegacyKey[] = ['medications', 'doses', 'moodEntries', 'cognitiveTests'];
-
 type LegacyPayload = Partial<Record<LegacyKey, unknown>>;
 
-type LegacyState = Partial<Record<LegacyKey, unknown>>;
+const LEGACY_KEYS: LegacyKey[] = ['medications', 'doses', 'moodEntries', 'cognitiveTests'];
+const MIGRATION_FLAG_KEY = 'legacyKvMigration';
 
 function safeParse<T>(value: string | null): T | undefined {
   if (!value) return undefined;
   try {
     return JSON.parse(value) as T;
   } catch (error) {
-    console.warn('[dexie-migration] Failed to parse legacy value', error);
+    console.warn('[kv-migration] failed to parse legacy value', error);
     return undefined;
   }
 }
@@ -120,7 +52,7 @@ function readLegacyFromStorage<T>(key: LegacyKey): T | undefined {
 
 function readLegacyFromGlobals<T>(key: LegacyKey): T | undefined {
   if (typeof window === 'undefined') return undefined;
-  const globalCandidates = [
+  const sources = [
     (window as Record<string, unknown>).__SPARK_KV_INITIAL_STATE__ as LegacyPayload,
     (window as Record<string, unknown>).__SPARK_KV_CACHE__ as LegacyPayload,
     (window as Record<string, unknown>).__SPARK_KV__ as LegacyPayload,
@@ -130,7 +62,7 @@ function readLegacyFromGlobals<T>(key: LegacyKey): T | undefined {
     (window as Record<string, unknown>).sparkKvCache as LegacyPayload
   ].filter((candidate): candidate is LegacyPayload => Boolean(candidate));
 
-  for (const source of globalCandidates) {
+  for (const source of sources) {
     if (source && typeof source === 'object' && key in source) {
       const value = source[key];
       if (value !== undefined) {
@@ -142,12 +74,12 @@ function readLegacyFromGlobals<T>(key: LegacyKey): T | undefined {
   return undefined;
 }
 
-async function loadLegacyState(): Promise<LegacyState> {
+async function loadLegacyState(): Promise<Partial<Record<LegacyKey, unknown>>> {
   if (typeof window === 'undefined') {
     return {};
   }
 
-  const state: LegacyState = {};
+  const state: Partial<Record<LegacyKey, unknown>> = {};
 
   for (const key of LEGACY_KEYS) {
     const fromStorage = readLegacyFromStorage<unknown>(key);
@@ -165,14 +97,14 @@ async function loadLegacyState(): Promise<LegacyState> {
   return state;
 }
 
-function ensureMedication(record: Medication): Medication {
+function normalizeMedication(record: Medication): Medication {
   const now = Date.now();
   return {
     absorptionRate: record.absorptionRate ?? 1,
     createdAt: record.createdAt ?? now,
     updatedAt: record.updatedAt ?? record.createdAt ?? now,
-    notes: record.notes,
     therapeuticRange: record.therapeuticRange,
+    notes: record.notes,
     id: record.id,
     name: record.name,
     brandName: record.brandName,
@@ -183,7 +115,7 @@ function ensureMedication(record: Medication): Medication {
   };
 }
 
-function ensureDose(record: MedicationDose): MedicationDose {
+function normalizeDose(record: MedicationDose): MedicationDose {
   const timestamp = record.timestamp ?? Date.now();
   return {
     id: record.id,
@@ -196,7 +128,7 @@ function ensureDose(record: MedicationDose): MedicationDose {
   };
 }
 
-function ensureMoodEntry(record: MoodEntry): MoodEntry {
+function normalizeMoodEntry(record: MoodEntry): MoodEntry {
   const timestamp = record.timestamp ?? Date.now();
   return {
     id: record.id,
@@ -210,7 +142,7 @@ function ensureMoodEntry(record: MoodEntry): MoodEntry {
   };
 }
 
-function ensureCognitiveTest(record: CognitiveTest): CognitiveTest {
+function normalizeCognitiveTest(record: CognitiveTest): CognitiveTest {
   const timestamp = record.timestamp ?? Date.now();
   return {
     id: record.id,
@@ -228,63 +160,61 @@ export async function migrateLegacyData(): Promise<void> {
     return;
   }
 
-  try {
-    await db.open();
+  const migrationCompleted = getStoredValue<boolean>(MIGRATION_FLAG_KEY);
+  if (migrationCompleted) {
+    return;
+  }
 
-    const migrationFlag = await db.metadata.get(MIGRATION_FLAG_KEY);
-    if (migrationFlag?.value === true) {
-      return;
-    }
+  const legacyState = await loadLegacyState();
+  let migrated = false;
 
-    const [medicationsCount, dosesCount, moodCount, cognitiveCount] = await Promise.all([
-      db.medications.count(),
-      db.doses.count(),
-      db.moodEntries.count(),
-      db.cognitiveTests.count()
-    ]);
-
-    if (medicationsCount + dosesCount + moodCount + cognitiveCount > 0) {
-      await db.metadata.put({
-        key: MIGRATION_FLAG_KEY,
-        value: true,
-        updatedAt: Date.now()
-      });
-      return;
-    }
-
-    const legacyState = await loadLegacyState();
-    const operations: Promise<unknown>[] = [];
-
+  const currentMedications = getStoredValue<Medication[]>('medications') ?? [];
+  if (currentMedications.length === 0) {
     const legacyMedications = legacyState.medications;
     if (Array.isArray(legacyMedications) && legacyMedications.length > 0) {
-      operations.push(db.medications.bulkPut(legacyMedications.map((record) => ensureMedication(record as Medication))));
+      const normalized = legacyMedications
+        .map((record) => normalizeMedication(record as Medication));
+      setStoredValue('medications', normalized);
+      migrated = true;
     }
+  }
 
+  const currentDoses = getStoredValue<MedicationDose[]>('doses') ?? [];
+  if (currentDoses.length === 0) {
     const legacyDoses = legacyState.doses;
     if (Array.isArray(legacyDoses) && legacyDoses.length > 0) {
-      operations.push(db.doses.bulkPut(legacyDoses.map((record) => ensureDose(record as MedicationDose))));
+      const normalized = legacyDoses
+        .map((record) => normalizeDose(record as MedicationDose));
+      setStoredValue('doses', normalized);
+      migrated = true;
     }
+  }
 
+  const currentMoodEntries = getStoredValue<MoodEntry[]>('moodEntries') ?? [];
+  if (currentMoodEntries.length === 0) {
     const legacyMood = legacyState.moodEntries;
     if (Array.isArray(legacyMood) && legacyMood.length > 0) {
-      operations.push(db.moodEntries.bulkPut(legacyMood.map((record) => ensureMoodEntry(record as MoodEntry))));
+      const normalized = legacyMood
+        .map((record) => normalizeMoodEntry(record as MoodEntry));
+      setStoredValue('moodEntries', normalized);
+      migrated = true;
     }
+  }
 
+  const currentCognitiveTests = getStoredValue<CognitiveTest[]>('cognitiveTests') ?? [];
+  if (currentCognitiveTests.length === 0) {
     const legacyTests = legacyState.cognitiveTests;
     if (Array.isArray(legacyTests) && legacyTests.length > 0) {
-      operations.push(db.cognitiveTests.bulkPut(legacyTests.map((record) => ensureCognitiveTest(record as CognitiveTest))));
+      const normalized = legacyTests
+        .map((record) => normalizeCognitiveTest(record as CognitiveTest));
+      setStoredValue('cognitiveTests', normalized);
+      migrated = true;
     }
-
-    if (operations.length > 0) {
-      await Promise.all(operations);
-    }
-
-    await db.metadata.put({
-      key: MIGRATION_FLAG_KEY,
-      value: true,
-      updatedAt: Date.now()
-    });
-  } catch (error) {
-    console.error('[dexie-migration] Failed to migrate legacy data', error);
   }
+
+  if (migrated) {
+    console.info('[kv-migration] migrated legacy Spark data into local storage');
+  }
+
+  setStoredValue(MIGRATION_FLAG_KEY, true);
 }

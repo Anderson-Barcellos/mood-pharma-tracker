@@ -1,8 +1,9 @@
-import { useCallback } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useCallback, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { db } from '@/core/database/db';
-import type { MoodEntry } from '@/lib/types';
+import type { MoodEntry } from '@/shared/types';
+import { usePersistentState } from '@/core/storage/persistent-store';
+
+const STORAGE_KEY = 'moodEntries';
 
 interface MoodEntryCreateInput extends Omit<MoodEntry, 'id' | 'createdAt'> {
   id?: string;
@@ -14,16 +15,15 @@ interface MoodEntryUpdateInput extends Partial<Omit<MoodEntry, 'id' | 'createdAt
 }
 
 export function useMoodEntries() {
-  const queryResult = useLiveQuery(async () => {
-    const records = await db.moodEntries.orderBy('timestamp').reverse().toArray();
-    return records ?? [];
-  }, []);
+  const { value, setValue, isReady } = usePersistentState<MoodEntry[]>(STORAGE_KEY, []);
 
-  const moodEntries = queryResult ?? [];
+  const moodEntries = useMemo(() => {
+    return [...value].sort((a, b) => b.timestamp - a.timestamp);
+  }, [value]);
 
   const createMoodEntry = useCallback(async (payload: MoodEntryCreateInput) => {
     const timestamp = payload.timestamp ?? Date.now();
-    const record: MoodEntry = {
+    const entry: MoodEntry = {
       id: payload.id ?? uuidv4(),
       timestamp,
       moodScore: payload.moodScore,
@@ -31,26 +31,30 @@ export function useMoodEntries() {
       energyLevel: payload.energyLevel,
       focusLevel: payload.focusLevel,
       notes: payload.notes,
-      createdAt: payload.createdAt ?? timestamp
+      createdAt: payload.createdAt ?? timestamp,
     };
 
-    await db.moodEntries.put(record);
-    return record;
-  }, []);
+    setValue((current) => [...current, entry]);
+    return entry;
+  }, [setValue]);
 
   const updateMoodEntry = useCallback(async (id: string, updates: MoodEntryUpdateInput) => {
-    await db.moodEntries.update(id, updates);
-  }, []);
+    setValue((current) => current.map((entry) => (
+      entry.id === id
+        ? { ...entry, ...updates }
+        : entry
+    )));
+  }, [setValue]);
 
   const deleteMoodEntry = useCallback(async (id: string) => {
-    await db.moodEntries.delete(id);
-  }, []);
+    setValue((current) => current.filter((entry) => entry.id !== id));
+  }, [setValue]);
 
   return {
     moodEntries,
     createMoodEntry,
     updateMoodEntry,
     deleteMoodEntry,
-    isLoading: queryResult === undefined
+    isLoading: !isReady,
   } as const;
 }

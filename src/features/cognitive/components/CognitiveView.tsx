@@ -1,9 +1,8 @@
 import { useMemo, useState } from 'react';
-import { useKV } from '@github/spark/hooks';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Button } from '@/shared/ui/button';
 import { Brain, Play } from '@phosphor-icons/react';
-import type { CognitiveTest, Matrix } from '@/shared/types';
+import type { Matrix } from '@/shared/types';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 import {
@@ -27,6 +26,7 @@ import {
   MatrixGenerationError,
   type MatrixSource
 } from '@/features/cognitive/services/geminiService';
+import { useCognitiveTests } from '@/hooks/use-cognitive-tests';
 
 const matrixPrompt = `
 You are an expert in psychometrics creating Raven's Progressive Matrices.
@@ -69,7 +69,7 @@ type GenerateMatrixOptions = {
 };
 
 export default function CognitiveView() {
-  const [cognitiveTests, setCognitiveTests] = useKV<CognitiveTest[]>('cognitiveTests', []);
+  const { cognitiveTests, createCognitiveTest } = useCognitiveTests();
   const [testInProgress, setTestInProgress] = useState(false);
   const [currentMatrixIndex, setCurrentMatrixIndex] = useState(0);
   const [currentMatrix, setCurrentMatrix] = useState<Matrix | null>(null);
@@ -231,14 +231,14 @@ export default function CognitiveView() {
         setCurrentMatrixIndex(currentMatrixIndex + 1);
         setStartTime(Date.now());
       } else {
-        finishTest(updatedMatrices);
+        await finishTest(updatedMatrices);
       }
     } else {
-      finishTest(updatedMatrices);
+      await finishTest(updatedMatrices);
     }
   };
 
-  const finishTest = (completedMatrices: Matrix[]) => {
+  const finishTest = async (completedMatrices: Matrix[]) => {
     const totalCorrect = completedMatrices.filter(m => m.wasCorrect).length;
     const accuracy = completedMatrices.length > 0 ? totalCorrect / completedMatrices.length : 0;
     const avgResponseTime =
@@ -252,7 +252,7 @@ export default function CognitiveView() {
       return sum + matrixScore;
     }, 0);
 
-    const test: CognitiveTest = {
+    await createCognitiveTest({
       id: uuidv4(),
       timestamp: Date.now(),
       matrices: completedMatrices,
@@ -260,9 +260,7 @@ export default function CognitiveView() {
       averageResponseTime: avgResponseTime,
       accuracy,
       createdAt: Date.now()
-    };
-
-    setCognitiveTests((current) => [...(current || []), test]);
+    });
     setTestInProgress(false);
     setShowResults(true);
 
@@ -271,10 +269,10 @@ export default function CognitiveView() {
     });
   };
 
-  const recentTests = [...(cognitiveTests || [])].sort((a, b) => b.timestamp - a.timestamp).slice(0, 10);
+  const recentTests = [...cognitiveTests].sort((a, b) => b.timestamp - a.timestamp).slice(0, 10);
 
   const chartData = useMemo(() => {
-    const sortedTests = [...(cognitiveTests || [])].sort((a, b) => a.timestamp - b.timestamp);
+    const sortedTests = [...cognitiveTests].sort((a, b) => a.timestamp - b.timestamp);
 
     return sortedTests.map(test => ({
       timestamp: safeFormat(test.timestamp, 'HH:mm', 'N/A'),

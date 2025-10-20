@@ -1,8 +1,9 @@
-import { useCallback } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useCallback, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { db } from '@/core/database/db';
-import type { CognitiveTest } from '@/lib/types';
+import type { CognitiveTest } from '@/shared/types';
+import { usePersistentState } from '@/core/storage/persistent-store';
+
+const STORAGE_KEY = 'cognitiveTests';
 
 interface CognitiveTestCreateInput extends Omit<CognitiveTest, 'id' | 'createdAt'> {
   id?: string;
@@ -14,12 +15,11 @@ interface CognitiveTestUpdateInput extends Partial<Omit<CognitiveTest, 'id' | 'c
 }
 
 export function useCognitiveTests() {
-  const queryResult = useLiveQuery(async () => {
-    const records = await db.cognitiveTests.orderBy('timestamp').reverse().toArray();
-    return records ?? [];
-  }, []);
+  const { value, setValue, isReady } = usePersistentState<CognitiveTest[]>(STORAGE_KEY, []);
 
-  const cognitiveTests = queryResult ?? [];
+  const cognitiveTests = useMemo(() => {
+    return [...value].sort((a, b) => b.timestamp - a.timestamp);
+  }, [value]);
 
   const createCognitiveTest = useCallback(async (payload: CognitiveTestCreateInput) => {
     const timestamp = payload.timestamp ?? Date.now();
@@ -30,26 +30,30 @@ export function useCognitiveTests() {
       totalScore: payload.totalScore,
       averageResponseTime: payload.averageResponseTime,
       accuracy: payload.accuracy,
-      createdAt: payload.createdAt ?? timestamp
+      createdAt: payload.createdAt ?? timestamp,
     };
 
-    await db.cognitiveTests.put(record);
+    setValue((current) => [...current, record]);
     return record;
-  }, []);
+  }, [setValue]);
 
   const updateCognitiveTest = useCallback(async (id: string, updates: CognitiveTestUpdateInput) => {
-    await db.cognitiveTests.update(id, updates);
-  }, []);
+    setValue((current) => current.map((test) => (
+      test.id === id
+        ? { ...test, ...updates }
+        : test
+    )));
+  }, [setValue]);
 
   const deleteCognitiveTest = useCallback(async (id: string) => {
-    await db.cognitiveTests.delete(id);
-  }, []);
+    setValue((current) => current.filter((test) => test.id !== id));
+  }, [setValue]);
 
   return {
     cognitiveTests,
     createCognitiveTest,
     updateCognitiveTest,
     deleteCognitiveTest,
-    isLoading: queryResult === undefined
+    isLoading: !isReady,
   } as const;
 }
