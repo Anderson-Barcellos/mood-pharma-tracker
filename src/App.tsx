@@ -18,6 +18,14 @@ import MedicationsView from './components/MedicationsView';
 import MoodView from './components/MoodView';
 import CognitiveView from './components/CognitiveView';
 import AnalyticsView from './components/AnalyticsView';
+import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from './lib/types';
+import { usePersistentState } from './lib/usePersistentState';
+
+function App() {
+  const [medications] = usePersistentState<Medication[]>('medications', []);
+  const [doses] = usePersistentState<MedicationDose[]>('doses', []);
+  const [moodEntries] = usePersistentState<MoodEntry[]>('moodEntries', []);
+  const [cognitiveTests] = usePersistentState<CognitiveTest[]>('cognitiveTests', []);
 import { migrateLegacyData } from '@/core/database/db';
 import { useMedications } from '@/hooks/use-medications';
 import { useDoses } from '@/hooks/use-doses';

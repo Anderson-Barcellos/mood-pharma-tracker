@@ -48,6 +48,7 @@ import {
   MatrixGenerationError,
   type MatrixSource
 } from '@/lib/gemini';
+import { usePersistentState } from '../lib/usePersistentState';
 import { useCognitiveTests } from '@/hooks/use-cognitive-tests';
 
 const matrixPrompt = `You are an expert in psychometrics creating Raven's Progressive Matrices.
@@ -89,6 +90,7 @@ type GenerateMatrixOptions = {
 };
 
 export default function CognitiveView() {
+  const [cognitiveTests, setCognitiveTests] = usePersistentState<CognitiveTest[]>('cognitiveTests', []);
   const { cognitiveTests, createCognitiveTest } = useCognitiveTests();
   const [testInProgress, setTestInProgress] = useState(false);
   const [currentMatrixIndex, setCurrentMatrixIndex] = useState(0);
@@ -102,6 +104,7 @@ export default function CognitiveView() {
   const [matrixSource, setMatrixSource] = useState<MatrixSource | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [showOfflinePrompt, setShowOfflinePrompt] = useState(false);
+  const [showResults, setShowResults] = useState(false);
 
   const fallbackMatrices = useMemo(() => getFallbackMatrices(), []);
   const fallbackCount = fallbackMatrices.length;
@@ -140,9 +143,7 @@ export default function CognitiveView() {
       if (result.source === 'fallback' && fallbackCount > 0) {
         setOfflineIndex((prev) => (prev + 1) % fallbackCount);
         setOfflineRemaining((prev) => (prev > 0 ? prev - 1 : 0));
-      }
-
-      if (result.source !== 'fallback') {
+      } else {
         setOfflineRemaining(fallbackCount);
       }
 
@@ -150,6 +151,21 @@ export default function CognitiveView() {
       setAiError(null);
       setShowOfflinePrompt(false);
 
+      const safeOptions = Array.isArray(result.options) ? result.options : [];
+      const safePatterns = Array.isArray(result.patterns) ? result.patterns : [];
+
+      return {
+        matrixId: result.id ?? uuidv4(),
+        svgContent: result.matrixSVG,
+        options: safeOptions,
+        patterns: safePatterns,
+        correctAnswer: result.correctAnswer,
+        userAnswer: -1,
+        responseTime: 0,
+        wasCorrect: false,
+        explanation: result.explanation ?? 'No explanation provided.',
+        source: result.source
+      };
         return {
           matrixId: result.id ?? uuidv4(),
           svgContent: result.matrixSVG,
@@ -324,6 +340,7 @@ export default function CognitiveView() {
     });
     setShowResults(true);
     setTestInProgress(false);
+    setShowResults(true);
     setUseFallbackMatrices(false);
 
     toast.success('Test completed!', {

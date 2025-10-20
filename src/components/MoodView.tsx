@@ -12,6 +12,10 @@ import { toast } from 'sonner';
 import type { MoodEntry } from '@/lib/types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { safeFormat } from '@/lib/utils';
+import { usePersistentState } from '@/lib/usePersistentState';
+
+export default function MoodView() {
+  const [moodEntries, setMoodEntries] = usePersistentState<MoodEntry[]>('moodEntries', []);
 import { useMoodEntries } from '@/hooks/use-mood-entries';
 
 export default function MoodView() {

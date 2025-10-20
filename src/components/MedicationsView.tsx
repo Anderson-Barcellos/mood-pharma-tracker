@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Plus, Pill, Pencil, Trash, ClockCounterClockwise } from '@phosphor-icons/react';
 import type { Medication, MedicationCategory } from '../lib/types';
 import MedicationDosesView from './MedicationDosesView';
+import { usePersistentState } from '../lib/usePersistentState';
 import { useMedications } from '@/hooks/use-medications';
 import { useDoses } from '@/hooks/use-doses';
 
@@ -24,6 +25,8 @@ const MEDICATION_CATEGORIES: MedicationCategory[] = [
 ];
 
 export default function MedicationsView() {
+  const [medications, setMedications] = usePersistentState<Medication[]>('medications', []);
+  const [doses] = usePersistentState<MedicationDose[]>('doses', []);
   const { medications, createMedication, updateMedication, deleteMedication } = useMedications();
   const { doses } = useDoses();
   const [dialogOpen, setDialogOpen] = useState(false);

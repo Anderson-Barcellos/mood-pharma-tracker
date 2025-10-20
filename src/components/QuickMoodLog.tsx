@@ -9,6 +9,10 @@ import { Smiley, SmileyMeh, SmileySad } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { safeFormat } from '@/lib/utils';
+import { usePersistentState } from '../lib/usePersistentState';
+
+export default function QuickMoodLog() {
+  const [moodEntries, setMoodEntries] = usePersistentState<MoodEntry[]>('moodEntries', []);
 import { useMoodEntries } from '@/hooks/use-mood-entries';
 
 export default function QuickMoodLog() {

@@ -9,6 +9,11 @@ import { Plus } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { safeFormat } from '@/lib/utils';
+import { usePersistentState } from '../lib/usePersistentState';
+
+export default function DoseLogger() {
+  const [medications] = usePersistentState<Medication[]>('medications', []);
+  const [doses, setDoses] = usePersistentState<MedicationDose[]>('doses', []);
 import { useMedications } from '@/hooks/use-medications';
 import { useDoses } from '@/hooks/use-doses';
 

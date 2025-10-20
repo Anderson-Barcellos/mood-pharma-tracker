@@ -8,6 +8,7 @@ import { Pencil, Trash } from '@phosphor-icons/react';
 import type { Medication, MedicationDose } from '../lib/types';
 import { toast } from 'sonner';
 import { safeFormat } from '@/lib/utils';
+import { usePersistentState } from '../lib/usePersistentState';
 import { useDoses } from '@/hooks/use-doses';
 
 interface MedicationDosesViewProps {
@@ -17,6 +18,7 @@ interface MedicationDosesViewProps {
 }
 
 export default function MedicationDosesView({ medication, open, onOpenChange }: MedicationDosesViewProps) {
+  const [doses, setDoses] = usePersistentState<MedicationDose[]>('doses', []);
   const { doses, updateDose, deleteDose } = useDoses(medication.id);
   const [editingDose, setEditingDose] = useState<MedicationDose | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
