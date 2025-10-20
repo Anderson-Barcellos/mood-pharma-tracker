@@ -6,6 +6,17 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Plus } from '@phosphor-icons/react';
+import type { MedicationDose } from '../lib/types';
+import { v4 as uuidv4 } from 'uuid';
+import { toast } from 'sonner';
+import { format } from 'date-fns';
+import { safeFormat } from '@/lib/utils';
+import { useMedications } from '@/hooks/useMedications';
+import { useDoses } from '@/hooks/useDoses';
+
+export default function DoseLogger() {
+  const { medications } = useMedications();
+  const { doses, upsertDose } = useDoses();
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { safeFormat } from '@/lib/utils';
@@ -47,6 +58,8 @@ export default function DoseLogger() {
       createdAt: Date.now()
     });
 
+    await upsertDose(dose);
+
     toast.success(`Logged ${doseAmount}mg of ${medication.name}`, {
       description: safeFormat(timestamp, 'MMM d, h:mm a')
     });
@@ -78,7 +91,7 @@ export default function DoseLogger() {
           <DialogTrigger asChild>
             <Button 
               className="w-full" 
-              disabled={(medications || []).length === 0}
+              disabled={medications.length === 0}
               onClick={() => {
                 const newNow = new Date();
                 setSelectedDate(format(newNow, 'yyyy-MM-dd'));
@@ -102,7 +115,7 @@ export default function DoseLogger() {
                     <SelectValue placeholder="Select medication..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {(medications || []).map(med => (
+                    {medications.map(med => (
                       <SelectItem key={med.id} value={med.id}>
                         {med.name}
                       </SelectItem>

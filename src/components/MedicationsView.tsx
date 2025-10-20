@@ -9,6 +9,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Pill, Pencil, Trash, ClockCounterClockwise } from '@phosphor-icons/react';
 import type { Medication, MedicationCategory } from '../lib/types';
+import { v4 as uuidv4 } from 'uuid';
+import MedicationDosesView from './MedicationDosesView';
+import { useMedications } from '@/hooks/useMedications';
+import { useDoses } from '@/hooks/useDoses';
 import MedicationDosesView from './MedicationDosesView';
 import { usePersistentState } from '../lib/usePersistentState';
 import { useMedications } from '@/hooks/use-medications';
@@ -25,6 +29,8 @@ const MEDICATION_CATEGORIES: MedicationCategory[] = [
 ];
 
 export default function MedicationsView() {
+  const { medications, upsertMedication, deleteMedication } = useMedications();
+  const { doses, deleteDosesByMedication } = useDoses();
   const [medications, setMedications] = usePersistentState<Medication[]>('medications', []);
   const [doses] = usePersistentState<MedicationDose[]>('doses', []);
   const { medications, createMedication, updateMedication, deleteMedication } = useMedications();
@@ -79,6 +85,9 @@ export default function MedicationsView() {
     setDialogOpen(true);
   };
 
+  const handleSave = async () => {
+    const medicationData: Medication = {
+      id: editingMed?.id || uuidv4(),
   const parseNumber = (value: string, fallback: number) => {
     const parsed = parseFloat(value);
     return Number.isNaN(parsed) ? fallback : parsed;
@@ -96,6 +105,7 @@ export default function MedicationsView() {
       notes: formData.notes || undefined
     } satisfies Omit<Medication, 'id' | 'createdAt' | 'updatedAt'>;
 
+    await upsertMedication(medicationData);
     if (editingMed) {
       await updateMedication(editingMed.id, basePayload);
     } else {
@@ -109,6 +119,7 @@ export default function MedicationsView() {
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this medication?')) {
       await deleteMedication(id);
+      await deleteDosesByMedication(id);
     }
   };
 

@@ -48,6 +48,7 @@ import {
   MatrixGenerationError,
   type MatrixSource
 } from '@/lib/gemini';
+import { useCognitiveTests } from '@/hooks/useCognitiveTests';
 import { usePersistentState } from '../lib/usePersistentState';
 import { useCognitiveTests } from '@/hooks/use-cognitive-tests';
 
@@ -90,6 +91,7 @@ type GenerateMatrixOptions = {
 };
 
 export default function CognitiveView() {
+  const { cognitiveTests, upsertCognitiveTest } = useCognitiveTests();
   const [cognitiveTests, setCognitiveTests] = usePersistentState<CognitiveTest[]>('cognitiveTests', []);
   const { cognitiveTests, createCognitiveTest } = useCognitiveTests();
   const [testInProgress, setTestInProgress] = useState(false);
@@ -163,6 +165,9 @@ export default function CognitiveView() {
         userAnswer: -1,
         responseTime: 0,
         wasCorrect: false,
+        explanation: result.explanation,
+        options: result.options,
+        patterns: result.patterns,
         explanation: result.explanation ?? 'No explanation provided.',
         source: result.source
       };
@@ -336,6 +341,15 @@ export default function CognitiveView() {
       totalScore,
       averageResponseTime: avgResponseTime,
       accuracy,
+      createdAt: Date.now()
+    };
+
+    try {
+      await upsertCognitiveTest(test);
+    } catch (error) {
+      console.error('Failed to persist cognitive test', error);
+      toast.error('Falhou ao salvar o teste cognitivo');
+    }
       createdAt: now
     });
     setShowResults(true);

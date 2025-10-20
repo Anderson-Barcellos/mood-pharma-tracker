@@ -9,6 +9,10 @@ import { Smiley, SmileyMeh, SmileySad } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { safeFormat } from '@/lib/utils';
+import { useMoodEntries } from '@/hooks/useMoodEntries';
+
+export default function QuickMoodLog() {
+  const { moodEntries, upsertMoodEntry } = useMoodEntries();
 import { usePersistentState } from '../lib/usePersistentState';
 
 export default function QuickMoodLog() {
@@ -39,6 +43,8 @@ export default function QuickMoodLog() {
       moodScore,
       createdAt: Date.now()
     });
+
+    await upsertMoodEntry(entry);
 
     toast.success(`Mood logged: ${moodScore}/10`, {
       description: safeFormat(timestamp, 'MMM d, h:mm a')
