@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useKV } from '@github/spark/hooks';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,9 +11,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { safeFormat } from '@/lib/utils';
+import { useMoodEntries } from '@/hooks/useMoodEntries';
 
 export default function QuickMoodLog() {
-  const [moodEntries, setMoodEntries] = useKV<MoodEntry[]>('moodEntries', []);
+  const { moodEntries, upsertMoodEntry } = useMoodEntries();
   const [moodScore, setMoodScore] = useState(5);
   const [dialogOpen, setDialogOpen] = useState(false);
   
@@ -28,7 +28,7 @@ export default function QuickMoodLog() {
     return <SmileySad className="w-6 h-6 text-destructive" weight="fill" />;
   };
 
-  const handleLogMood = () => {
+  const handleLogMood = async () => {
     const dateTime = new Date(`${selectedDate}T${selectedTime}`);
     const timestamp = dateTime.getTime();
 
@@ -39,8 +39,8 @@ export default function QuickMoodLog() {
       createdAt: Date.now()
     };
 
-    setMoodEntries((current) => [...(current || []), entry]);
-    
+    await upsertMoodEntry(entry);
+
     toast.success(`Mood logged: ${moodScore}/10`, {
       description: safeFormat(timestamp, 'MMM d, h:mm a')
     });
@@ -53,7 +53,7 @@ export default function QuickMoodLog() {
     setSelectedTime(format(newNow, 'HH:mm'));
   };
 
-  const recentMoods = [...(moodEntries || [])].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
+  const recentMoods = [...moodEntries].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
 
   return (
     <Card>

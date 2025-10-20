@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useKV } from '@github/spark/hooks';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Toaster } from '@/components/ui/sonner';
 import { ChartLine, Pill, Smiley, Brain } from '@phosphor-icons/react';
@@ -8,13 +7,16 @@ import MedicationsView from './components/MedicationsView';
 import MoodView from './components/MoodView';
 import CognitiveView from './components/CognitiveView';
 import AnalyticsView from './components/AnalyticsView';
-import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from './lib/types';
+import { useMedications } from '@/hooks/useMedications';
+import { useDoses } from '@/hooks/useDoses';
+import { useMoodEntries } from '@/hooks/useMoodEntries';
+import { useCognitiveTests } from '@/hooks/useCognitiveTests';
 
 function App() {
-  const [medications] = useKV<Medication[]>('medications', []);
-  const [doses] = useKV<MedicationDose[]>('doses', []);
-  const [moodEntries] = useKV<MoodEntry[]>('moodEntries', []);
-  const [cognitiveTests] = useKV<CognitiveTest[]>('cognitiveTests', []);
+  const { medications } = useMedications();
+  const { doses } = useDoses();
+  const { moodEntries } = useMoodEntries();
+  const { cognitiveTests } = useCognitiveTests();
   const [activeTab, setActiveTab] = useState('dashboard');
 
   const safeMedications = medications || [];

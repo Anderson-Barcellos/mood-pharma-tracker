@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react';
-import { useKV } from '@github/spark/hooks';
 import { format } from 'date-fns';
 import { Smiley, SmileyMeh, SmileySad, Plus, List, Pencil, Trash } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
@@ -14,9 +13,10 @@ import { toast } from 'sonner';
 import type { MoodEntry } from '@/lib/types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { safeFormat } from '@/lib/utils';
+import { useMoodEntries } from '@/hooks/useMoodEntries';
 
 export default function MoodView() {
-  const [moodEntries, setMoodEntries] = useKV<MoodEntry[]>('moodEntries', []);
+  const { moodEntries, upsertMoodEntry, deleteMoodEntry } = useMoodEntries();
   
   const [moodScore, setMoodScore] = useState(5);
   const [anxietyLevel, setAnxietyLevel] = useState<number | undefined>(undefined);
@@ -48,7 +48,7 @@ export default function MoodView() {
     return <SmileySad className="w-8 h-8 text-destructive" weight="fill" />;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const entry: MoodEntry = {
       id: uuidv4(),
       timestamp: Date.now(),
@@ -60,7 +60,7 @@ export default function MoodView() {
       createdAt: Date.now()
     };
 
-    setMoodEntries((current) => [...(current || []), entry]);
+    await upsertMoodEntry(entry);
     toast.success('Mood entry saved');
 
     setMoodScore(5);
@@ -71,7 +71,7 @@ export default function MoodView() {
     setShowExtended(false);
   };
 
-  const handleQuickLog = () => {
+  const handleQuickLog = async () => {
     if (!quickDate || !quickTime) {
       toast.error('Please select date and time');
       return;
@@ -87,7 +87,7 @@ export default function MoodView() {
       createdAt: Date.now()
     };
 
-    setMoodEntries((current) => [...(current || []), entry]);
+    await upsertMoodEntry(entry);
     toast.success('Quick mood logged');
     setQuickDialogOpen(false);
 
@@ -109,7 +109,7 @@ export default function MoodView() {
     setEditDialogOpen(true);
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editingEntry || !editDate || !editTime) return;
 
     const dateTime = new Date(`${editDate}T${editTime}`);
@@ -125,27 +125,25 @@ export default function MoodView() {
       notes: editNotes || undefined
     };
 
-    setMoodEntries((current) => 
-      (current || []).map(e => e.id === editingEntry.id ? updatedEntry : e)
-    );
+    await upsertMoodEntry(updatedEntry);
     toast.success('Mood entry updated');
     setEditDialogOpen(false);
   };
 
-  const handleDelete = (entryId: string) => {
+  const handleDelete = async (entryId: string) => {
     if (window.confirm('Delete this mood entry?')) {
-      setMoodEntries((current) => (current || []).filter(e => e.id !== entryId));
+      await deleteMoodEntry(entryId);
       toast.success('Mood entry deleted');
     }
   };
 
   const recentEntries = useMemo(() => {
-    return [...(moodEntries || [])].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
+    return [...moodEntries].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
   }, [moodEntries]);
 
   const chartData = useMemo(() => {
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    return [...(moodEntries || [])]
+    return [...moodEntries]
       .filter(e => e.timestamp >= thirtyDaysAgo)
       .sort((a, b) => a.timestamp - b.timestamp)
       .map(e => ({
@@ -419,7 +417,7 @@ export default function MoodView() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            {[...(moodEntries || [])].sort((a, b) => b.timestamp - a.timestamp).map(entry => (
+            {[...moodEntries].sort((a, b) => b.timestamp - a.timestamp).map(entry => (
               <Card key={entry.id}>
                 <CardContent className="pt-4">
                   <div className="flex items-start gap-3">

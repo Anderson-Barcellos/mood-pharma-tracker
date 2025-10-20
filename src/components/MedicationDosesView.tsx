@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useKV } from '@github/spark/hooks';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +8,7 @@ import { Pencil, Trash } from '@phosphor-icons/react';
 import type { Medication, MedicationDose } from '../lib/types';
 import { toast } from 'sonner';
 import { safeFormat } from '@/lib/utils';
+import { useDoses } from '@/hooks/useDoses';
 
 interface MedicationDosesViewProps {
   medication: Medication;
@@ -17,14 +17,14 @@ interface MedicationDosesViewProps {
 }
 
 export default function MedicationDosesView({ medication, open, onOpenChange }: MedicationDosesViewProps) {
-  const [doses, setDoses] = useKV<MedicationDose[]>('doses', []);
+  const { doses, upsertDose, deleteDose } = useDoses();
   const [editingDose, setEditingDose] = useState<MedicationDose | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editAmount, setEditAmount] = useState('');
   const [editDate, setEditDate] = useState('');
   const [editTime, setEditTime] = useState('');
 
-  const medicationDoses = (doses || [])
+  const medicationDoses = doses
     .filter(d => d.medicationId === medication.id)
     .sort((a, b) => b.timestamp - a.timestamp);
 
@@ -36,28 +36,28 @@ export default function MedicationDosesView({ medication, open, onOpenChange }: 
     setEditDialogOpen(true);
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editingDose || !editAmount) return;
 
     const dateTime = new Date(`${editDate}T${editTime}`);
     const timestamp = dateTime.getTime();
 
-    setDoses((current) =>
-      (current || []).map(d =>
-        d.id === editingDose.id
-          ? { ...d, doseAmount: parseFloat(editAmount), timestamp }
-          : d
-      )
-    );
+    const updatedDose: MedicationDose = {
+      ...editingDose,
+      doseAmount: parseFloat(editAmount),
+      timestamp
+    };
+
+    await upsertDose(updatedDose);
 
     toast.success('Dose updated successfully');
     setEditDialogOpen(false);
     setEditingDose(null);
   };
 
-  const handleDelete = (doseId: string) => {
+  const handleDelete = async (doseId: string) => {
     if (confirm('Are you sure you want to delete this dose entry?')) {
-      setDoses((current) => (current || []).filter(d => d.id !== doseId));
+      await deleteDose(doseId);
       toast.success('Dose deleted');
     }
   };
