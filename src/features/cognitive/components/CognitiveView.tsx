@@ -23,7 +23,6 @@ import {
   requestMatrix,
   getFallbackMatrices,
   hasGeminiSupport,
-  hasSparkSupport,
   MatrixGenerationError,
   type MatrixSource
 } from '@/features/cognitive/services/geminiService';
@@ -88,8 +87,8 @@ export default function CognitiveView() {
   const [offlineRemaining, setOfflineRemaining] = useState(fallbackCount);
 
   const generateMatrix = async ({ offline = offlineMode }: GenerateMatrixOptions = {}): Promise<Matrix | null> => {
-    if (!offline && !hasSparkSupport() && !hasGeminiSupport()) {
-      setAiError('A IA nativa não tá disponível no navegador, mas temos matrizes cacheadas pra quebrar o galho.');
+    if (!offline && !hasGeminiSupport()) {
+      setAiError('A IA não tá configurada por aqui agora, mas temos matrizes cacheadas pra te ajudar.');
       setShowOfflinePrompt(true);
       return null;
     }
@@ -133,7 +132,7 @@ export default function CognitiveView() {
       };
     } catch (error) {
       if (error instanceof MatrixGenerationError) {
-        if (error.code === 'FALLBACK_REQUIRED' || error.code === 'GEMINI_UNAVAILABLE' || error.code === 'SPARK_UNAVAILABLE') {
+        if (error.code === 'FALLBACK_REQUIRED' || error.code === 'GEMINI_UNAVAILABLE') {
           setAiError('Bah, a IA tá fora do ar agora. Tu pode cancelar ou rodar um teste cacheado.');
           setShowOfflinePrompt(true);
           return null;
