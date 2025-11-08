@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { useKV } from '@github/spark/hooks';
+import { useState, useEffect, useMemo } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 import { Toaster } from '@/shared/ui/sonner';
 import { ChartLine, Pill, Smiley, Brain } from '@phosphor-icons/react';
@@ -8,34 +7,6 @@ import MedicationsPage from '@/features/medications/pages/MedicationsPage';
 import MoodPage from '@/features/mood/pages/MoodPage';
 import CognitivePage from '@/features/cognitive/pages/CognitivePage';
 import AnalyticsPage from '@/features/analytics/pages/AnalyticsPage';
-import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from '@/shared/types';
-import { useEffect, useMemo, useState } from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Toaster } from '@/components/ui/sonner';
-import { ChartLine, Pill, Smiley, Brain } from '@phosphor-icons/react';
-import Dashboard from './components/Dashboard';
-import MedicationsView from './components/MedicationsView';
-import MoodView from './components/MoodView';
-import CognitiveView from './components/CognitiveView';
-import AnalyticsView from './components/AnalyticsView';
-import { useMedications } from '@/hooks/useMedications';
-import { useDoses } from '@/hooks/useDoses';
-import { useMoodEntries } from '@/hooks/useMoodEntries';
-import { useCognitiveTests } from '@/hooks/useCognitiveTests';
-
-function App() {
-  const { medications } = useMedications();
-  const { doses } = useDoses();
-  const { moodEntries } = useMoodEntries();
-  const { cognitiveTests } = useCognitiveTests();
-import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from './lib/types';
-import { usePersistentState } from './lib/usePersistentState';
-
-function App() {
-  const [medications] = usePersistentState<Medication[]>('medications', []);
-  const [doses] = usePersistentState<MedicationDose[]>('doses', []);
-  const [moodEntries] = usePersistentState<MoodEntry[]>('moodEntries', []);
-  const [cognitiveTests] = usePersistentState<CognitiveTest[]>('cognitiveTests', []);
 import { migrateLegacyData } from '@/core/database/db';
 import { useMedications } from '@/hooks/use-medications';
 import { useDoses } from '@/hooks/use-doses';
@@ -46,10 +17,10 @@ function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [migrationPending, setMigrationPending] = useState(true);
 
-  const { isLoading: medicationsLoading } = useMedications();
-  const { isLoading: dosesLoading } = useDoses();
-  const { isLoading: moodLoading } = useMoodEntries();
-  const { isLoading: cognitiveLoading } = useCognitiveTests();
+  const { medications, isLoading: medicationsLoading } = useMedications();
+  const { doses, isLoading: dosesLoading } = useDoses();
+  const { moodEntries, isLoading: moodLoading } = useMoodEntries();
+  const { cognitiveTests, isLoading: cognitiveLoading } = useCognitiveTests();
 
   useEffect(() => {
     let cancelled = false;
@@ -73,7 +44,7 @@ function App() {
       <Toaster />
       {isInitializing && (
         <div className="w-full bg-muted text-muted-foreground text-sm py-2 text-center">
-          Sincronizando dados locais...
+          Loading data...
         </div>
       )}
       <header className="border-b border-border bg-card">
@@ -114,12 +85,11 @@ function App() {
 
           <TabsContent value="dashboard" className="space-y-6">
             <DashboardPage
-              medications={safeMedications}
-              doses={safeDoses}
-              moodEntries={safeMoodEntries}
-              cognitiveTests={safeCognitiveTests}
+              medications={medications}
+              doses={doses}
+              moodEntries={moodEntries}
+              cognitiveTests={cognitiveTests}
             />
-            <Dashboard />
           </TabsContent>
 
           <TabsContent value="medications" className="space-y-6">
@@ -136,12 +106,11 @@ function App() {
 
           <TabsContent value="analytics" className="space-y-6">
             <AnalyticsPage
-              medications={safeMedications}
-              doses={safeDoses}
-              moodEntries={safeMoodEntries}
-              cognitiveTests={safeCognitiveTests}
+              medications={medications}
+              doses={doses}
+              moodEntries={moodEntries}
+              cognitiveTests={cognitiveTests}
             />
-            <AnalyticsView />
           </TabsContent>
         </Tabs>
       </main>

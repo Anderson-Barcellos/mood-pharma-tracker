@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useKV } from '@github/spark/hooks';
+import { useMoodEntries } from '@/hooks/use-mood-entries';
 import { format } from 'date-fns';
 import { Smiley, SmileyMeh, SmileySad, Plus, List, Pencil, Trash } from '@phosphor-icons/react';
 import { Button } from '@/shared/ui/button';
@@ -16,12 +16,14 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { safeFormat } from '@/shared/utils';
 
 export default function MoodView() {
-  const [moodEntries, setMoodEntries] = useKV<MoodEntry[]>('moodEntries', []);
-  
+  const { moodEntries, createMoodEntry, updateMoodEntry, deleteMoodEntry } = useMoodEntries();
+
   const [moodScore, setMoodScore] = useState(5);
   const [anxietyLevel, setAnxietyLevel] = useState<number | undefined>(undefined);
   const [energyLevel, setEnergyLevel] = useState<number | undefined>(undefined);
   const [focusLevel, setFocusLevel] = useState<number | undefined>(undefined);
+  const [sensitivityLevel, setSensitivityLevel] = useState<number | undefined>(undefined);
+  const [motivationLevel, setMotivationLevel] = useState<number | undefined>(undefined);
   const [notes, setNotes] = useState('');
   const [showExtended, setShowExtended] = useState(false);
 
@@ -38,6 +40,8 @@ export default function MoodView() {
   const [editAnxiety, setEditAnxiety] = useState<number | undefined>(undefined);
   const [editEnergy, setEditEnergy] = useState<number | undefined>(undefined);
   const [editFocus, setEditFocus] = useState<number | undefined>(undefined);
+  const [editSensitivity, setEditSensitivity] = useState<number | undefined>(undefined);
+  const [editMotivation, setEditMotivation] = useState<number | undefined>(undefined);
   const [editNotes, setEditNotes] = useState('');
   const [editDate, setEditDate] = useState('');
   const [editTime, setEditTime] = useState('');
@@ -48,30 +52,31 @@ export default function MoodView() {
     return <SmileySad className="w-8 h-8 text-destructive" weight="fill" />;
   };
 
-  const handleSave = () => {
-    const entry: MoodEntry = {
-      id: uuidv4(),
+  const handleSave = async () => {
+    await createMoodEntry({
       timestamp: Date.now(),
       moodScore,
       anxietyLevel,
       energyLevel,
       focusLevel,
-      notes: notes || undefined,
-      createdAt: Date.now()
-    };
+      sensitivityLevel,
+      motivationLevel,
+      notes: notes || undefined
+    });
 
-    setMoodEntries((current) => [...(current || []), entry]);
     toast.success('Mood entry saved');
 
     setMoodScore(5);
     setAnxietyLevel(undefined);
     setEnergyLevel(undefined);
     setFocusLevel(undefined);
+    setSensitivityLevel(undefined);
+    setMotivationLevel(undefined);
     setNotes('');
     setShowExtended(false);
   };
 
-  const handleQuickLog = () => {
+  const handleQuickLog = async () => {
     if (!quickDate || !quickTime) {
       toast.error('Please select date and time');
       return;
@@ -80,14 +85,11 @@ export default function MoodView() {
     const dateTime = new Date(`${quickDate}T${quickTime}`);
     const timestamp = dateTime.getTime();
 
-    const entry: MoodEntry = {
-      id: uuidv4(),
+    await createMoodEntry({
       timestamp,
-      moodScore: quickMoodScore,
-      createdAt: Date.now()
-    };
+      moodScore: quickMoodScore
+    });
 
-    setMoodEntries((current) => [...(current || []), entry]);
     toast.success('Quick mood logged');
     setQuickDialogOpen(false);
 
@@ -103,49 +105,49 @@ export default function MoodView() {
     setEditAnxiety(entry.anxietyLevel);
     setEditEnergy(entry.energyLevel);
     setEditFocus(entry.focusLevel);
+    setEditSensitivity(entry.sensitivityLevel);
+    setEditMotivation(entry.motivationLevel);
     setEditNotes(entry.notes || '');
     setEditDate(safeFormat(entry.timestamp, 'yyyy-MM-dd', ''));
     setEditTime(safeFormat(entry.timestamp, 'HH:mm', ''));
     setEditDialogOpen(true);
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editingEntry || !editDate || !editTime) return;
 
     const dateTime = new Date(`${editDate}T${editTime}`);
     const timestamp = dateTime.getTime();
 
-    const updatedEntry: MoodEntry = {
-      ...editingEntry,
+    await updateMoodEntry(editingEntry.id, {
       timestamp,
       moodScore: editMood,
       anxietyLevel: editAnxiety,
       energyLevel: editEnergy,
       focusLevel: editFocus,
+      sensitivityLevel: editSensitivity,
+      motivationLevel: editMotivation,
       notes: editNotes || undefined
-    };
+    });
 
-    setMoodEntries((current) => 
-      (current || []).map(e => e.id === editingEntry.id ? updatedEntry : e)
-    );
     toast.success('Mood entry updated');
     setEditDialogOpen(false);
   };
 
-  const handleDelete = (entryId: string) => {
+  const handleDelete = async (entryId: string) => {
     if (window.confirm('Delete this mood entry?')) {
-      setMoodEntries((current) => (current || []).filter(e => e.id !== entryId));
+      await deleteMoodEntry(entryId);
       toast.success('Mood entry deleted');
     }
   };
 
   const recentEntries = useMemo(() => {
-    return [...(moodEntries || [])].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
+    return [...moodEntries].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
   }, [moodEntries]);
 
   const chartData = useMemo(() => {
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    return [...(moodEntries || [])]
+    return [...moodEntries]
       .filter(e => e.timestamp >= thirtyDaysAgo)
       .sort((a, b) => a.timestamp - b.timestamp)
       .map(e => ({
@@ -154,7 +156,9 @@ export default function MoodView() {
         mood: e.moodScore,
         anxiety: e.anxietyLevel,
         energy: e.energyLevel,
-        focus: e.focusLevel
+        focus: e.focusLevel,
+        sensitivity: e.sensitivityLevel,
+        motivation: e.motivationLevel
       }));
   }, [moodEntries]);
 
@@ -309,6 +313,34 @@ export default function MoodView() {
                   step={1}
                 />
               </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Sensitivity Level</Label>
+                  <span className="text-lg font-medium">{sensitivityLevel ?? '-'}</span>
+                </div>
+                <Slider
+                  value={[sensitivityLevel ?? 5]}
+                  onValueChange={(value) => setSensitivityLevel(value[0])}
+                  min={0}
+                  max={10}
+                  step={1}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Motivation Level</Label>
+                  <span className="text-lg font-medium">{motivationLevel ?? '-'}</span>
+                </div>
+                <Slider
+                  value={[motivationLevel ?? 5]}
+                  onValueChange={(value) => setMotivationLevel(value[0])}
+                  min={0}
+                  max={10}
+                  step={1}
+                />
+              </div>
             </>
           )}
 
@@ -351,6 +383,12 @@ export default function MoodView() {
                 {chartData.some(d => d.focus !== undefined) && (
                   <Line type="monotone" dataKey="focus" stroke="#8b5cf6" name="Focus" />
                 )}
+                {chartData.some(d => d.sensitivity !== undefined) && (
+                  <Line type="monotone" dataKey="sensitivity" stroke="#ec4899" name="Sensitivity" />
+                )}
+                {chartData.some(d => d.motivation !== undefined) && (
+                  <Line type="monotone" dataKey="motivation" stroke="#14b8a6" name="Motivation" />
+                )}
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
@@ -378,6 +416,12 @@ export default function MoodView() {
                       )}
                       {entry.focusLevel !== undefined && (
                         <span className="text-sm text-muted-foreground">Focus: {entry.focusLevel}</span>
+                      )}
+                      {entry.sensitivityLevel !== undefined && (
+                        <span className="text-sm text-muted-foreground">Sensitivity: {entry.sensitivityLevel}</span>
+                      )}
+                      {entry.motivationLevel !== undefined && (
+                        <span className="text-sm text-muted-foreground">Motivation: {entry.motivationLevel}</span>
                       )}
                     </div>
                     <p className="text-sm text-muted-foreground">
@@ -415,11 +459,11 @@ export default function MoodView() {
           <DialogHeader>
             <DialogTitle>All Mood Entries</DialogTitle>
             <DialogDescription>
-              {moodEntries?.length || 0} total entries
+              {moodEntries.length} total entries
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            {[...(moodEntries || [])].sort((a, b) => b.timestamp - a.timestamp).map(entry => (
+            {[...moodEntries].sort((a, b) => b.timestamp - a.timestamp).map(entry => (
               <Card key={entry.id}>
                 <CardContent className="pt-4">
                   <div className="flex items-start gap-3">
@@ -435,6 +479,12 @@ export default function MoodView() {
                         )}
                         {entry.focusLevel !== undefined && (
                           <span className="text-sm text-muted-foreground">Focus: {entry.focusLevel}</span>
+                        )}
+                        {entry.sensitivityLevel !== undefined && (
+                          <span className="text-sm text-muted-foreground">Sensitivity: {entry.sensitivityLevel}</span>
+                        )}
+                        {entry.motivationLevel !== undefined && (
+                          <span className="text-sm text-muted-foreground">Motivation: {entry.motivationLevel}</span>
                         )}
                       </div>
                       <p className="text-sm text-muted-foreground">
@@ -540,6 +590,32 @@ export default function MoodView() {
               <Slider
                 value={[editFocus ?? 5]}
                 onValueChange={(value) => setEditFocus(value[0])}
+                min={0}
+                max={10}
+                step={1}
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Sensitivity Level (optional)</Label>
+                <span className="text-lg font-medium">{editSensitivity ?? '-'}</span>
+              </div>
+              <Slider
+                value={[editSensitivity ?? 5]}
+                onValueChange={(value) => setEditSensitivity(value[0])}
+                min={0}
+                max={10}
+                step={1}
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Motivation Level (optional)</Label>
+                <span className="text-lg font-medium">{editMotivation ?? '-'}</span>
+              </div>
+              <Slider
+                value={[editMotivation ?? 5]}
+                onValueChange={(value) => setEditMotivation(value[0])}
                 min={0}
                 max={10}
                 step={1}
