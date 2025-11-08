@@ -1,4 +1,5 @@
 import type { CognitiveTest, Medication, MedicationDose, MoodEntry } from '@/lib/types';
+import Dexie, { type Table } from 'dexie';
 
 type TableName = 'medications' | 'doses' | 'moodEntries' | 'cognitiveTests';
 
@@ -280,8 +281,9 @@ export function initializeDatabase() {
   }
 
   return initializationPromise;
-import Dexie, { type Table } from 'dexie';
-import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from '@/lib/types';
+}
+
+// ===== Dexie Implementation =====
 
 type LegacyKey = 'medications' | 'doses' | 'moodEntries' | 'cognitiveTests';
 
