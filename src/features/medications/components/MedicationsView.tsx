@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useKV } from '@github/spark/hooks';
+import { useMedications } from '@/hooks/use-medications';
+import { useDoses } from '@/hooks/use-doses';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Button } from '@/shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/shared/ui/dialog';
@@ -24,8 +25,8 @@ const MEDICATION_CATEGORIES: MedicationCategory[] = [
 ];
 
 export default function MedicationsView() {
-  const [medications, setMedications] = useKV<Medication[]>('medications', []);
-  const [doses] = useKV<MedicationDose[]>('doses', []);
+  const { medications, createMedication, updateMedication, deleteMedication } = useMedications();
+  const { doses } = useDoses();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMed, setEditingMed] = useState<Medication | null>(null);
   const [viewDosesMed, setViewDosesMed] = useState<Medication | null>(null);
@@ -76,9 +77,8 @@ export default function MedicationsView() {
     setDialogOpen(true);
   };
 
-  const handleSave = () => {
-    const medicationData: Medication = {
-      id: editingMed?.id || uuidv4(),
+  const handleSave = async () => {
+    const medicationData = {
       name: formData.name,
       brandName: formData.brandName || undefined,
       category: formData.category,
@@ -86,27 +86,22 @@ export default function MedicationsView() {
       volumeOfDistribution: parseFloat(formData.volumeOfDistribution),
       bioavailability: parseFloat(formData.bioavailability),
       absorptionRate: parseFloat(formData.absorptionRate),
-      notes: formData.notes || undefined,
-      createdAt: editingMed?.createdAt || Date.now(),
-      updatedAt: Date.now()
+      notes: formData.notes || undefined
     };
 
-    setMedications((current) => {
-      const currentMeds = current || [];
-      if (editingMed) {
-        return currentMeds.map(m => m.id === editingMed.id ? medicationData : m);
-      } else {
-        return [...currentMeds, medicationData];
-      }
-    });
+    if (editingMed) {
+      await updateMedication(editingMed.id, medicationData);
+    } else {
+      await createMedication(medicationData);
+    }
 
     setDialogOpen(false);
     resetForm();
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this medication?')) {
-      setMedications((current) => (current || []).filter(m => m.id !== id));
+      await deleteMedication(id);
     }
   };
 
@@ -116,7 +111,7 @@ export default function MedicationsView() {
   };
 
   const getDoseCount = (medicationId: string) => {
-    return (doses || []).filter(d => d.medicationId === medicationId).length;
+    return doses.filter(d => d.medicationId === medicationId).length;
   };
 
   return (
@@ -249,7 +244,7 @@ export default function MedicationsView() {
         </Dialog>
       </div>
 
-      {(medications || []).length === 0 ? (
+      {medications.length === 0 ? (
         <Card className="border-dashed">
           <CardHeader>
             <CardTitle>No medications yet</CardTitle>
@@ -263,7 +258,7 @@ export default function MedicationsView() {
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {(medications || []).map(med => (
+          {medications.map(med => (
             <Card key={med.id}>
               <CardHeader>
                 <div className="flex items-start justify-between">

@@ -30,6 +30,8 @@ export function useMoodEntries() {
       anxietyLevel: payload.anxietyLevel,
       energyLevel: payload.energyLevel,
       focusLevel: payload.focusLevel,
+      sensitivityLevel: payload.sensitivityLevel,
+      motivationLevel: payload.motivationLevel,
       notes: payload.notes,
       createdAt: payload.createdAt ?? timestamp
     };
