@@ -17,7 +17,7 @@ node_modules/
 .pnp/
 .pnp.js
 .yarn/
-package-lock.json
+# package-lock.json  # Keep this to ensure exact dependency versions
 yarn.lock
 pnpm-lock.yaml
 
@@ -53,7 +53,11 @@ GLASS_FILES_TREE.txt
 # ■■■■■■■■■■■
 #  ENVIRONMENT & SECRETS
 # ■■■■■■■■■■■
-
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
 *.key
 *.pem
 *.crt
@@ -111,3 +115,8 @@ clear-cache.html
 coverage/
 .nyc_output/
 *.tsbuildinfo
+
+# Archived old code
+archive/
+HEALTH_DATA/
+

@@ -271,7 +271,8 @@ export default function MedicationsView() {
                       <Badge variant="outline">{med.category}</Badge>
                     </div>
                   </div>
-                </CardHeader>
+                </div>
+              </CardHeader>
                 <CardContent>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
@@ -291,7 +292,7 @@ export default function MedicationsView() {
                       <span className="font-medium">{med.absorptionRate ? `${med.absorptionRate}/h` : '—'}</span>
                     </div>
                   </div>
-                  {!hasPkParams && (
+                  {(!med.halfLife || !med.volumeOfDistribution || !med.bioavailability || !med.absorptionRate) && (
                     <div className="mt-3 pt-3 border-t">
                       <p className="text-xs text-destructive">
                         ⚠️ Parâmetros farmacocinéticos incompletos. Gráficos não serão exibidos até você completar os dados.
@@ -323,8 +324,8 @@ export default function MedicationsView() {
                   </div>
                 </CardFooter>
               </Card>
-            );
-          })}
+            ))
+          }
         </div>
       )}
 

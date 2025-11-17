@@ -9,25 +9,15 @@ import CognitivePage from '@/features/cognitive/pages/CognitivePage';
 import AnalyticsPage from '@/features/analytics/pages/AnalyticsPage';
 import { migrateLegacyData } from '@/core/database/db';
 import { loadServerData } from '@/core/services/server-data-loader';
-import { isAuthenticated, isLockEnabled } from '@/features/auth/services/simple-auth';
-import { LockScreen } from '@/features/auth/components/LockScreen';
 import { useMedications } from '@/hooks/use-medications';
 import { useDoses } from '@/hooks/use-doses';
 import { useMoodEntries } from '@/hooks/use-mood-entries';
 import { useCognitiveTests } from '@/hooks/use-cognitive-tests';
-import { useInitialSetup } from '@/hooks/use-initial-setup';
-import DashboardPage from '@/features/analytics/pages/DashboardPage';
-import MedicationsPage from '@/features/medications/pages/MedicationsPage';
-import MoodPage from '@/features/mood/pages/MoodPage';
-import CognitivePage from '@/features/cognitive/pages/CognitivePage';
-import AnalyticsPage from '@/features/analytics/pages/AnalyticsPage';
-import { PWAInstallPrompt } from '@/shared/components/PWAInstallPrompt';
 
 function App() {
-  const [activeTab, setActiveTab] = useState<NavigationTab>('dashboard');
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [migrationPending, setMigrationPending] = useState(true);
   const [serverSyncPending, setServerSyncPending] = useState(true);
-  const [authenticated, setAuthenticated] = useState(() => isAuthenticated());
 
   const { medications, isLoading: medicationsLoading } = useMedications();
   const { doses, isLoading: dosesLoading } = useDoses();
@@ -70,8 +60,8 @@ function App() {
   }, []);
 
   const isInitializing = useMemo(() => {
-    return migrationPending || serverSyncPending || medicationsLoading || dosesLoading || moodLoading || cognitiveLoading || isSeeding;
-  }, [migrationPending, serverSyncPending, medicationsLoading, dosesLoading, moodLoading, cognitiveLoading, isSeeding]);
+    return migrationPending || serverSyncPending || medicationsLoading || dosesLoading || moodLoading || cognitiveLoading;
+  }, [migrationPending, serverSyncPending, medicationsLoading, dosesLoading, moodLoading, cognitiveLoading]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -126,50 +116,13 @@ function App() {
             />
           </TabsContent>
 
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'dashboard':
-        return (
-          <DashboardPage
-            medications={medications}
-            doses={doses}
-            moodEntries={moodEntries}
-            cognitiveTests={cognitiveTests}
-            onNavigate={setActiveTab}
-          />
-        );
-      case 'medications':
-        return <MedicationsPage />;
-      case 'mood':
-        return <MoodPage />;
-      case 'cognitive':
-        return <CognitivePage />;
-      case 'analytics':
-        return (
-          <AnalyticsPage
-            medications={medications}
-            doses={doses}
-            moodEntries={moodEntries}
-            cognitiveTests={cognitiveTests}
-          />
-        );
-      default:
-        return (
-          <DashboardPage
-            medications={medications}
-            doses={doses}
-            moodEntries={moodEntries}
-            cognitiveTests={cognitiveTests}
-          />
-        );
-    }
-  };
+          <TabsContent value="medications" className="space-y-6">
+            <MedicationsPage />
+          </TabsContent>
 
-  // Check if lock screen should be shown
-  // TEMPORARILY DISABLED FOR TESTING
-  // if (isLockEnabled() && !authenticated) {
-  //   return <LockScreen onSuccess={() => setAuthenticated(true)} />;
-  // }
+          <TabsContent value="mood" className="space-y-6">
+            <MoodPage />
+          </TabsContent>
 
           <TabsContent value="cognitive" className="space-y-6">
             <CognitivePage />

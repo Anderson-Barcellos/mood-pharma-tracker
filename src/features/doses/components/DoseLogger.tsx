@@ -18,10 +18,11 @@ import { useProtectedAction } from '@/shared/components/ProtectedAction';
 export default function DoseLogger() {
   const { medications } = useMedications();
   const { doses, createDose } = useDoses();
+  const protectedAction = useProtectedAction();
   const [selectedMedicationId, setSelectedMedicationId] = useState('');
   const [doseAmount, setDoseAmount] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
-  
+
   const now = new Date();
   const [selectedDate, setSelectedDate] = useState(format(now, 'yyyy-MM-dd'));
   const [selectedTime, setSelectedTime] = useState(format(now, 'HH:mm'));
@@ -39,23 +40,28 @@ export default function DoseLogger() {
       try {
         const timestamp = parseLocalDateTime(selectedDate, selectedTime);
 
-    await createDose({
-      medicationId: selectedMedicationId,
-      timestamp,
-      doseAmount: parseFloat(doseAmount)
+        await createDose({
+          medicationId: selectedMedicationId,
+          timestamp,
+          doseAmount: parseFloat(doseAmount)
+        });
+
+        toast.success(`Logged ${doseAmount}mg of ${medication.name}`, {
+          description: safeFormat(timestamp, 'MMM d, h:mm a')
+        });
+
+        setSelectedMedicationId('');
+        setDoseAmount('');
+        setDialogOpen(false);
+
+        const newNow = new Date();
+        setSelectedDate(format(newNow, 'yyyy-MM-dd'));
+        setSelectedTime(format(newNow, 'HH:mm'));
+      } catch (error) {
+        console.error('Error logging dose:', error);
+        toast.error('Failed to log dose');
+      }
     });
-
-    toast.success(`Logged ${doseAmount}mg of ${medication.name}`, {
-      description: safeFormat(timestamp, 'MMM d, h:mm a')
-    });
-
-    setSelectedMedicationId('');
-    setDoseAmount('');
-    setDialogOpen(false);
-
-    const newNow = new Date();
-    setSelectedDate(format(newNow, 'yyyy-MM-dd'));
-    setSelectedTime(format(newNow, 'HH:mm'));
   };
 
   const recentDoses = [...doses].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
@@ -142,7 +148,7 @@ export default function DoseLogger() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-              <Button 
+              <Button
                 onClick={handleLogDose}
                 disabled={!selectedMedicationId || !doseAmount}
               >
