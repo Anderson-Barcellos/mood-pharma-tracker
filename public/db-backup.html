@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MoodPharma DB Backup/Restore</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #00adad;
+            margin-top: 0;
+        }
+        button {
+            background: #00adad;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 10px 10px 0;
+        }
+        button:hover {
+            background: #008989;
+        }
+        textarea {
+            width: 100%;
+            height: 200px;
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+            border-left: 4px solid #2196f3;
+        }
+        .success {
+            background: #e8f5e9;
+            border-left-color: #4caf50;
+        }
+        .error {
+            background: #ffebee;
+            border-left-color: #f44336;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #6c757d;
+            text-transform: uppercase;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #00adad;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 MoodPharma Database Backup & Restore</h1>
+
+        <div class="info">
+            <strong>📍 Current Origin:</strong> <span id="currentOrigin"></span><br>
+            <strong>🗄️ Database:</strong> MoodPharmaTrackerDB
+        </div>
+
+        <h2>📊 Current Database Stats</h2>
+        <div class="stats" id="stats"></div>
+        <button onclick="loadStats()">🔄 Refresh Stats</button>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #ddd;">
+
+        <h2>💾 Export Data (Backup)</h2>
+        <button onclick="exportData()">📥 Export All Data to JSON</button>
+        <textarea id="exportOutput" placeholder="Exported data will appear here..." readonly></textarea>
+        <button onclick="copyToClipboard()">📋 Copy to Clipboard</button>
+        <button onclick="downloadBackup()">⬇️ Download as File</button>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #ddd;">
+
+        <h2>📤 Import Data (Restore)</h2>
+        <div class="info">
+            ⚠️ <strong>Warning:</strong> This will ADD data to the current database. Existing records with same IDs will be updated.
+        </div>
+        <textarea id="importInput" placeholder="Paste your backup JSON here..."></textarea>
+        <button onclick="importData()">📤 Import Data</button>
+        <button onclick="importData(true)">🗑️ Clear DB & Import</button>
+
+        <div id="message"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/dexie@latest/dist/dexie.min.js"></script>
+    <script>
+        // Database setup (same schema as app)
+        const db = new Dexie('MoodPharmaTrackerDB');
+        db.version(1).stores({
+            medications: 'id, name, category, createdAt, updatedAt',
+            doses: 'id, medicationId, timestamp, createdAt',
+            moodEntries: 'id, timestamp, createdAt',
+            cognitiveTests: 'id, timestamp, createdAt'
+        });
+        db.version(2).stores({
+            medications: 'id, name, category, createdAt, updatedAt',
+            doses: 'id, medicationId, timestamp, createdAt',
+            moodEntries: 'id, timestamp, createdAt, moodScore',
+            cognitiveTests: 'id, timestamp, createdAt, totalScore',
+            metadata: '&key, updatedAt'
+        });
+        db.version(3).stores({
+            medications: 'id, name, category, createdAt, updatedAt',
+            doses: 'id, medicationId, timestamp, createdAt, [medicationId+timestamp]',
+            moodEntries: 'id, timestamp, createdAt, moodScore',
+            cognitiveTests: 'id, timestamp, createdAt, totalScore',
+            metadata: '&key, updatedAt'
+        });
+
+        document.getElementById('currentOrigin').textContent = window.location.origin;
+
+        function showMessage(text, type = 'info') {
+            const el = document.getElementById('message');
+            el.innerHTML = `<div class="info ${type}">${text}</div>`;
+            setTimeout(() => el.innerHTML = '', 5000);
+        }
+
+        async function loadStats() {
+            try {
+                await db.open();
+                const [medications, doses, moodEntries, cognitiveTests] = await Promise.all([
+                    db.medications.count(),
+                    db.doses.count(),
+                    db.moodEntries.count(),
+                    db.cognitiveTests.count()
+                ]);
+
+                document.getElementById('stats').innerHTML = `
+                    <div class="stat-card">
+                        <div class="stat-label">Medications</div>
+                        <div class="stat-value">${medications}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Doses</div>
+                        <div class="stat-value">${doses}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Mood Entries</div>
+                        <div class="stat-value">${moodEntries}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Cognitive Tests</div>
+                        <div class="stat-value">${cognitiveTests}</div>
+                    </div>
+                `;
+            } catch (error) {
+                showMessage('❌ Error loading stats: ' + error.message, 'error');
+            }
+        }
+
+        async function exportData() {
+            try {
+                await db.open();
+                const data = {
+                    exportDate: new Date().toISOString(),
+                    origin: window.location.origin,
+                    medications: await db.medications.toArray(),
+                    doses: await db.doses.toArray(),
+                    moodEntries: await db.moodEntries.toArray(),
+                    cognitiveTests: await db.cognitiveTests.toArray(),
+                    metadata: await db.metadata.toArray()
+                };
+
+                const json = JSON.stringify(data, null, 2);
+                document.getElementById('exportOutput').value = json;
+
+                const total = data.medications.length + data.doses.length +
+                             data.moodEntries.length + data.cognitiveTests.length;
+                showMessage(`✅ Successfully exported ${total} records!`, 'success');
+            } catch (error) {
+                showMessage('❌ Export failed: ' + error.message, 'error');
+            }
+        }
+
+        function copyToClipboard() {
+            const textarea = document.getElementById('exportOutput');
+            textarea.select();
+            document.execCommand('copy');
+            showMessage('📋 Copied to clipboard!', 'success');
+        }
+
+        function downloadBackup() {
+            const data = document.getElementById('exportOutput').value;
+            if (!data) {
+                showMessage('❌ No data to download. Export first!', 'error');
+                return;
+            }
+
+            const blob = new Blob([data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `moodpharma-backup-${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showMessage('⬇️ Download started!', 'success');
+        }
+
+        async function importData(clearFirst = false) {
+            try {
+                const json = document.getElementById('importInput').value.trim();
+                if (!json) {
+                    showMessage('❌ Please paste backup data first!', 'error');
+                    return;
+                }
+
+                const data = JSON.parse(json);
+                await db.open();
+
+                if (clearFirst) {
+                    if (!confirm('⚠️ This will DELETE ALL existing data! Continue?')) {
+                        return;
+                    }
+                    await Promise.all([
+                        db.medications.clear(),
+                        db.doses.clear(),
+                        db.moodEntries.clear(),
+                        db.cognitiveTests.clear(),
+                        db.metadata.clear()
+                    ]);
+                    showMessage('🗑️ Database cleared!', 'info');
+                }
+
+                let total = 0;
+                if (data.medications?.length) {
+                    await db.medications.bulkPut(data.medications);
+                    total += data.medications.length;
+                }
+                if (data.doses?.length) {
+                    await db.doses.bulkPut(data.doses);
+                    total += data.doses.length;
+                }
+                if (data.moodEntries?.length) {
+                    await db.moodEntries.bulkPut(data.moodEntries);
+                    total += data.moodEntries.length;
+                }
+                if (data.cognitiveTests?.length) {
+                    await db.cognitiveTests.bulkPut(data.cognitiveTests);
+                    total += data.cognitiveTests.length;
+                }
+                if (data.metadata?.length) {
+                    await db.metadata.bulkPut(data.metadata);
+                }
+
+                showMessage(`✅ Successfully imported ${total} records!`, 'success');
+                loadStats();
+            } catch (error) {
+                showMessage('❌ Import failed: ' + error.message, 'error');
+            }
+        }
+
+        // Load stats on page load
+        loadStats();
+    </script>
+</body>
+</html>

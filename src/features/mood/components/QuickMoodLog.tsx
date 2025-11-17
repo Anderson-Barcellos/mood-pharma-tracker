@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useKV } from '@github/spark/hooks';
+import { useMoodEntries } from '@/hooks/use-mood-entries';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
@@ -8,16 +8,18 @@ import { Slider } from '@/shared/ui/slider';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/shared/ui/dialog';
 import { Smiley, SmileyMeh, SmileySad } from '@phosphor-icons/react';
 import type { MoodEntry } from '@/shared/types';
-import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { safeFormat } from '@/shared/utils';
+import { parseLocalDateTime } from '@/shared/utils/date-helpers';
+import { useProtectedAction } from '@/shared/components/ProtectedAction';
 
 export default function QuickMoodLog() {
-  const [moodEntries, setMoodEntries] = useKV<MoodEntry[]>('moodEntries', []);
+  const { moodEntries, createMoodEntry, isLoading } = useMoodEntries();
+  const protectedAction = useProtectedAction();
   const [moodScore, setMoodScore] = useState(5);
   const [dialogOpen, setDialogOpen] = useState(false);
-  
+
   const now = new Date();
   const [selectedDate, setSelectedDate] = useState(format(now, 'yyyy-MM-dd'));
   const [selectedTime, setSelectedTime] = useState(format(now, 'HH:mm'));
@@ -29,28 +31,31 @@ export default function QuickMoodLog() {
   };
 
   const handleLogMood = () => {
-    const dateTime = new Date(`${selectedDate}T${selectedTime}`);
-    const timestamp = dateTime.getTime();
+    protectedAction(async () => {
+      try {
+        const timestamp = parseLocalDateTime(selectedDate, selectedTime);
 
-    const entry: MoodEntry = {
-      id: uuidv4(),
-      timestamp,
-      moodScore,
-      createdAt: Date.now()
-    };
+        await createMoodEntry({
+          timestamp,
+          moodScore
+        });
 
-    setMoodEntries((current) => [...(current || []), entry]);
-    
-    toast.success(`Mood logged: ${moodScore}/10`, {
-      description: safeFormat(timestamp, 'MMM d, h:mm a')
+        toast.success(`Mood logged: ${moodScore}/10`, {
+          description: safeFormat(timestamp, 'MMM d, h:mm a')
+        });
+
+        setMoodScore(5);
+        setDialogOpen(false);
+
+        const newNow = new Date();
+        setSelectedDate(format(newNow, 'yyyy-MM-dd'));
+        setSelectedTime(format(newNow, 'HH:mm'));
+      } catch (error) {
+        toast.error('Invalid date/time', {
+          description: error instanceof Error ? error.message : 'Please check the date and time fields'
+        });
+      }
     });
-
-    setMoodScore(5);
-    setDialogOpen(false);
-    
-    const newNow = new Date();
-    setSelectedDate(format(newNow, 'yyyy-MM-dd'));
-    setSelectedTime(format(newNow, 'HH:mm'));
   };
 
   const recentMoods = [...(moodEntries || [])].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
@@ -64,7 +69,7 @@ export default function QuickMoodLog() {
       <CardContent className="space-y-4">
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button 
+            <Button
               className="w-full"
               onClick={() => {
                 const newNow = new Date();

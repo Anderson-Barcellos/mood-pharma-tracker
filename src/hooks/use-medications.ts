@@ -1,18 +1,12 @@
 import { useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { v4 as uuidv4 } from 'uuid';
 import { db } from '@/core/database/db';
-import type { Medication } from '@/lib/types';
+import type { Medication } from '@/shared/types';
+import { createMedicationRecord, mergeMedicationRecord, type MedicationDraft } from '@/core/database/medication-helpers';
+import { scheduleServerSync } from '@/core/services/server-sync';
 
-interface MedicationCreateInput extends Omit<Medication, 'id' | 'createdAt' | 'updatedAt'> {
-  id?: string;
-  createdAt?: number;
-  updatedAt?: number;
-}
-
-interface MedicationUpdateInput extends Partial<Omit<Medication, 'id' | 'createdAt' | 'updatedAt'>> {
-  updatedAt?: number;
-}
+type MedicationCreateInput = MedicationDraft & Required<Pick<Medication, 'name' | 'halfLife' | 'volumeOfDistribution' | 'bioavailability'>>;
+type MedicationUpdateInput = MedicationDraft;
 
 export function useMedications() {
   const queryResult = useLiveQuery(
@@ -26,32 +20,21 @@ export function useMedications() {
   const medications = queryResult ?? [];
 
   const createMedication = useCallback(async (payload: MedicationCreateInput) => {
-    const now = Date.now();
-    const record: Medication = {
-      id: payload.id ?? uuidv4(),
-      name: payload.name,
-      brandName: payload.brandName,
-      category: payload.category,
-      halfLife: payload.halfLife,
-      volumeOfDistribution: payload.volumeOfDistribution,
-      bioavailability: payload.bioavailability,
-      absorptionRate: payload.absorptionRate ?? 1,
-      therapeuticRange: payload.therapeuticRange,
-      notes: payload.notes,
-      createdAt: payload.createdAt ?? now,
-      updatedAt: payload.updatedAt ?? now
-    };
-
+    const record = createMedicationRecord(payload);
     await db.medications.put(record);
+    scheduleServerSync('medication:create');
     return record;
   }, []);
 
   const updateMedication = useCallback(async (id: string, updates: MedicationUpdateInput) => {
-    const now = Date.now();
-    await db.medications.update(id, {
-      ...updates,
-      updatedAt: updates.updatedAt ?? now
-    });
+    const existing = await db.medications.get(id);
+    if (!existing) {
+      return;
+    }
+
+    const merged = mergeMedicationRecord(existing, updates);
+    await db.medications.put(merged);
+    scheduleServerSync('medication:update');
   }, []);
 
   const deleteMedication = useCallback(async (id: string) => {
@@ -59,6 +42,7 @@ export function useMedications() {
       await db.medications.delete(id);
       await db.doses.where('medicationId').equals(id).delete();
     });
+    scheduleServerSync('medication:delete');
   }, []);
 
   return {

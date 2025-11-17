@@ -2,7 +2,8 @@ import { useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '@/core/database/db';
-import type { MoodEntry } from '@/lib/types';
+import type { MoodEntry } from '@/shared/types';
+import { scheduleServerSync } from '@/core/services/server-sync';
 
 interface MoodEntryCreateInput extends Omit<MoodEntry, 'id' | 'createdAt'> {
   id?: string;
@@ -35,15 +36,18 @@ export function useMoodEntries() {
     };
 
     await db.moodEntries.put(record);
+    scheduleServerSync('mood:create');
     return record;
   }, []);
 
   const updateMoodEntry = useCallback(async (id: string, updates: MoodEntryUpdateInput) => {
     await db.moodEntries.update(id, updates);
+    scheduleServerSync('mood:update');
   }, []);
 
   const deleteMoodEntry = useCallback(async (id: string) => {
     await db.moodEntries.delete(id);
+    scheduleServerSync('mood:delete');
   }, []);
 
   return {

@@ -1,287 +1,7 @@
-import type { CognitiveTest, Medication, MedicationDose, MoodEntry } from '@/lib/types';
-
-type TableName = 'medications' | 'doses' | 'moodEntries' | 'cognitiveTests';
-
-const DB_NAME = 'mood-pharma-tracker';
-const DB_VERSION = 1;
-const KV_MIGRATION_FLAG = 'mood-pharma-indexeddb-migrated';
-const BASE_KV_SERVICE_URL = '/_spark/kv';
-
-let dbPromise: Promise<IDBDatabase> | null = null;
-const dbEvents = new EventTarget();
-
-const TABLE_EVENT: Record<TableName, string> = {
-  medications: 'medications-changed',
-  doses: 'doses-changed',
-  moodEntries: 'moodEntries-changed',
-  cognitiveTests: 'cognitiveTests-changed'
-};
-
-async function openDatabase(): Promise<IDBDatabase> {
-  if (!dbPromise) {
-    dbPromise = new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-      request.onupgradeneeded = () => {
-        const db = request.result;
-
-        if (!db.objectStoreNames.contains('medications')) {
-          const store = db.createObjectStore('medications', { keyPath: 'id' });
-          store.createIndex('byUpdatedAt', 'updatedAt', { unique: false });
-        }
-
-        if (!db.objectStoreNames.contains('doses')) {
-          const store = db.createObjectStore('doses', { keyPath: 'id' });
-          store.createIndex('byMedicationId', 'medicationId', { unique: false });
-          store.createIndex('byTimestamp', 'timestamp', { unique: false });
-          store.createIndex('byMedicationAndTimestamp', ['medicationId', 'timestamp'], { unique: false });
-        }
-
-        if (!db.objectStoreNames.contains('moodEntries')) {
-          const store = db.createObjectStore('moodEntries', { keyPath: 'id' });
-          store.createIndex('byTimestamp', 'timestamp', { unique: false });
-        }
-
-        if (!db.objectStoreNames.contains('cognitiveTests')) {
-          const store = db.createObjectStore('cognitiveTests', { keyPath: 'id' });
-          store.createIndex('byTimestamp', 'timestamp', { unique: false });
-        }
-      };
-
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  return dbPromise;
-}
-
-function emitChange(table: TableName) {
-  const eventName = TABLE_EVENT[table];
-  dbEvents.dispatchEvent(new Event(eventName));
-}
-
-function runTransaction<T>(table: TableName, mode: IDBTransactionMode, executor: (store: IDBObjectStore) => void): Promise<T> {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const db = await openDatabase();
-      const transaction = db.transaction(table, mode);
-      const store = transaction.objectStore(table);
-      let result: T | undefined;
-
-      const requestResult = executor(store);
-      if (requestResult !== undefined) {
-        result = requestResult;
-      }
-
-      transaction.oncomplete = () => resolve(result as T);
-      transaction.onerror = () => reject(transaction.error);
-      transaction.onabort = () => reject(transaction.error);
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-async function getAllFromStore<T>(table: TableName): Promise<T[]> {
-  const db = await openDatabase();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(table, 'readonly');
-    const store = transaction.objectStore(table);
-    const request = store.getAll();
-
-    request.onsuccess = () => resolve(request.result as T[]);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function putRecord<T>(table: TableName, value: T) {
-  await runTransaction<void>(table, 'readwrite', (store) => {
-    store.put(value as any);
-  });
-  emitChange(table);
-}
-
-async function deleteRecord(table: TableName, id: string) {
-  await runTransaction<void>(table, 'readwrite', (store) => {
-    store.delete(id);
-  });
-  emitChange(table);
-}
-
-async function bulkPut<T>(table: TableName, values: T[]) {
-  if (values.length === 0) return;
-  await runTransaction<void>(table, 'readwrite', (store) => {
-    for (const value of values) {
-      store.put(value as any);
-    }
-  });
-  emitChange(table);
-}
-
-async function deleteDosesForMedication(medicationId: string) {
-  const db = await openDatabase();
-  await new Promise<void>((resolve, reject) => {
-    const transaction = db.transaction('doses', 'readwrite');
-    const store = transaction.objectStore('doses');
-    const index = store.index('byMedicationId');
-    const request = index.openKeyCursor(IDBKeyRange.only(medicationId));
-
-    request.onsuccess = () => {
-      const cursor = request.result;
-      if (!cursor) {
-        resolve();
-        return;
-      }
-      cursor.delete();
-      cursor.continue();
-    };
-
-    request.onerror = () => reject(request.error);
-    transaction.onerror = () => reject(transaction.error);
-    transaction.oncomplete = () => resolve();
-  });
-  emitChange('doses');
-}
-
-export async function getMedications(): Promise<Medication[]> {
-  const records = await getAllFromStore<Medication>('medications');
-  return records.sort((a, b) => a.createdAt - b.createdAt);
-}
-
-export async function saveMedication(medication: Medication) {
-  await putRecord('medications', medication);
-}
-
-export async function removeMedication(id: string) {
-  await deleteRecord('medications', id);
-}
-
-export async function getDoses(): Promise<MedicationDose[]> {
-  const records = await getAllFromStore<MedicationDose>('doses');
-  return records.sort((a, b) => a.timestamp - b.timestamp);
-}
-
-export async function saveDose(dose: MedicationDose) {
-  await putRecord('doses', dose);
-}
-
-export async function removeDose(id: string) {
-  await deleteRecord('doses', id);
-}
-
-export async function removeDosesByMedication(medicationId: string) {
-  await deleteDosesForMedication(medicationId);
-}
-
-export async function getMoodEntries(): Promise<MoodEntry[]> {
-  const records = await getAllFromStore<MoodEntry>('moodEntries');
-  return records.sort((a, b) => a.timestamp - b.timestamp);
-}
-
-export async function saveMoodEntry(entry: MoodEntry) {
-  await putRecord('moodEntries', entry);
-}
-
-export async function removeMoodEntry(id: string) {
-  await deleteRecord('moodEntries', id);
-}
-
-export async function getCognitiveTests(): Promise<CognitiveTest[]> {
-  const records = await getAllFromStore<CognitiveTest>('cognitiveTests');
-  return records.sort((a, b) => a.timestamp - b.timestamp);
-}
-
-export async function saveCognitiveTest(test: CognitiveTest) {
-  await putRecord('cognitiveTests', test);
-}
-
-export async function removeCognitiveTest(id: string) {
-  await deleteRecord('cognitiveTests', id);
-}
-
-export async function subscribeToTable(table: TableName, callback: () => void) {
-  const eventName = TABLE_EVENT[table];
-  const handler = () => callback();
-  dbEvents.addEventListener(eventName, handler);
-  return () => dbEvents.removeEventListener(eventName, handler);
-}
-
-async function fetchKvKey<T>(key: string): Promise<T | undefined> {
-  try {
-    const response = await fetch(`${BASE_KV_SERVICE_URL}/${encodeURIComponent(key)}`);
-    if (!response.ok) {
-      if (response.status === 404) {
-        return undefined;
-      }
-      throw new Error(`Failed to fetch KV key "${key}": ${response.status} ${response.statusText}`);
-    }
-
-    const payload = await response.text();
-    return payload ? (JSON.parse(payload) as T) : undefined;
-  } catch (error) {
-    console.error('Failed to migrate key from KV', key, error);
-    return undefined;
-  }
-}
-
-export async function migrateKvToIndexedDb() {
-  if (typeof window === 'undefined') return;
-
-  const db = await openDatabase();
-  void db; // ensure database is created before migration
-
-  const alreadyMigrated = window.localStorage.getItem(KV_MIGRATION_FLAG);
-  if (alreadyMigrated === 'true') {
-    return;
-  }
-
-  const [medications, doses, moodEntries, cognitiveTests] = await Promise.all([
-    getMedications(),
-    getDoses(),
-    getMoodEntries(),
-    getCognitiveTests()
-  ]);
-
-  if (medications.length + doses.length + moodEntries.length + cognitiveTests.length > 0) {
-    window.localStorage.setItem(KV_MIGRATION_FLAG, 'true');
-    return;
-  }
-
-  const [kvMedications, kvDoses, kvMoodEntries, kvCognitiveTests] = await Promise.all([
-    fetchKvKey<Medication[]>('medications'),
-    fetchKvKey<MedicationDose[]>('doses'),
-    fetchKvKey<MoodEntry[]>('moodEntries'),
-    fetchKvKey<CognitiveTest[]>('cognitiveTests')
-  ]);
-
-  await bulkPut('medications', kvMedications ?? []);
-  await bulkPut('doses', kvDoses ?? []);
-  await bulkPut('moodEntries', kvMoodEntries ?? []);
-  await bulkPut('cognitiveTests', kvCognitiveTests ?? []);
-
-  window.localStorage.setItem(KV_MIGRATION_FLAG, 'true');
-}
-
-let initializationPromise: Promise<void> | null = null;
-
-export function initializeDatabase() {
-  if (!initializationPromise) {
-    initializationPromise = (async () => {
-      if (typeof window === 'undefined') return;
-      try {
-        await openDatabase();
-        await migrateKvToIndexedDb();
-      } catch (error) {
-        console.error('Failed to initialize IndexedDB database', error);
-        throw error;
-      }
-    })();
-  }
-
-  return initializationPromise;
 import Dexie, { type Table } from 'dexie';
-import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from '@/lib/types';
+import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from '@/shared/types';
+import { normalizeMedicationRecord } from '@/core/database/medication-helpers';
+import { validateTimestamp, normalizeTimestamp } from '@/shared/utils/date-helpers';
 
 type LegacyKey = 'medications' | 'doses' | 'moodEntries' | 'cognitiveTests';
 
@@ -346,6 +66,15 @@ class MoodPharmaDatabase extends Dexie {
           }
         });
       });
+
+    this.version(3)
+      .stores({
+        medications: 'id, name, category, createdAt, updatedAt',
+        doses: 'id, medicationId, timestamp, createdAt, [medicationId+timestamp]',
+        moodEntries: 'id, timestamp, createdAt, moodScore',
+        cognitiveTests: 'id, timestamp, createdAt, totalScore',
+        metadata: '&key, updatedAt'
+      });
   }
 }
 
@@ -403,13 +132,13 @@ function readLegacyFromStorage<T>(key: LegacyKey): T | undefined {
 function readLegacyFromGlobals<T>(key: LegacyKey): T | undefined {
   if (typeof window === 'undefined') return undefined;
   const globalCandidates = [
-    (window as Record<string, unknown>).__SPARK_KV_INITIAL_STATE__ as LegacyPayload,
-    (window as Record<string, unknown>).__SPARK_KV_CACHE__ as LegacyPayload,
-    (window as Record<string, unknown>).__SPARK_KV__ as LegacyPayload,
-    (window as Record<string, unknown>).__sparkKV__ as LegacyPayload,
-    (window as Record<string, unknown>).__sparkKv__ as LegacyPayload,
-    (window as Record<string, unknown>).sparkKvInitialState as LegacyPayload,
-    (window as Record<string, unknown>).sparkKvCache as LegacyPayload
+    (window as unknown as Record<string, unknown>).__SPARK_KV_INITIAL_STATE__ as LegacyPayload,
+    (window as unknown as Record<string, unknown>).__SPARK_KV_CACHE__ as LegacyPayload,
+    (window as unknown as Record<string, unknown>).__SPARK_KV__ as LegacyPayload,
+    (window as unknown as Record<string, unknown>).__sparkKV__ as LegacyPayload,
+    (window as unknown as Record<string, unknown>).__sparkKv__ as LegacyPayload,
+    (window as unknown as Record<string, unknown>).sparkKvInitialState as LegacyPayload,
+    (window as unknown as Record<string, unknown>).sparkKvCache as LegacyPayload
   ].filter((candidate): candidate is LegacyPayload => Boolean(candidate));
 
   for (const source of globalCandidates) {
@@ -448,25 +177,13 @@ async function loadLegacyState(): Promise<LegacyState> {
 }
 
 function ensureMedication(record: Medication): Medication {
-  const now = Date.now();
-  return {
-    absorptionRate: record.absorptionRate ?? 1,
-    createdAt: record.createdAt ?? now,
-    updatedAt: record.updatedAt ?? record.createdAt ?? now,
-    notes: record.notes,
-    therapeuticRange: record.therapeuticRange,
-    id: record.id,
-    name: record.name,
-    brandName: record.brandName,
-    category: record.category,
-    halfLife: record.halfLife,
-    volumeOfDistribution: record.volumeOfDistribution,
-    bioavailability: record.bioavailability
-  };
+  return normalizeMedicationRecord(record);
 }
 
 function ensureDose(record: MedicationDose): MedicationDose {
-  const timestamp = record.timestamp ?? Date.now();
+  let timestamp = normalizeTimestamp(record.timestamp);
+  let createdAt = normalizeTimestamp(record.createdAt, timestamp);
+  
   return {
     id: record.id,
     medicationId: record.medicationId,
@@ -474,12 +191,14 @@ function ensureDose(record: MedicationDose): MedicationDose {
     doseAmount: record.doseAmount,
     route: record.route,
     notes: record.notes,
-    createdAt: record.createdAt ?? timestamp
+    createdAt
   };
 }
 
 function ensureMoodEntry(record: MoodEntry): MoodEntry {
-  const timestamp = record.timestamp ?? Date.now();
+  let timestamp = normalizeTimestamp(record.timestamp);
+  let createdAt = normalizeTimestamp(record.createdAt, timestamp);
+  
   return {
     id: record.id,
     timestamp,
@@ -488,7 +207,7 @@ function ensureMoodEntry(record: MoodEntry): MoodEntry {
     energyLevel: record.energyLevel,
     focusLevel: record.focusLevel,
     notes: record.notes,
-    createdAt: record.createdAt ?? timestamp
+    createdAt
   };
 }
 
@@ -511,13 +230,11 @@ export async function migrateLegacyData(): Promise<void> {
   }
 
   try {
+    console.log('[MoodPharma DB] Opening database...');
     await db.open();
+    console.log('[MoodPharma DB] Database opened successfully');
 
-    const migrationFlag = await db.metadata.get(MIGRATION_FLAG_KEY);
-    if (migrationFlag?.value === true) {
-      return;
-    }
-
+    // First, check if database actually has data
     const [medicationsCount, dosesCount, moodCount, cognitiveCount] = await Promise.all([
       db.medications.count(),
       db.doses.count(),
@@ -525,7 +242,19 @@ export async function migrateLegacyData(): Promise<void> {
       db.cognitiveTests.count()
     ]);
 
-    if (medicationsCount + dosesCount + moodCount + cognitiveCount > 0) {
+    const totalCount = medicationsCount + dosesCount + moodCount + cognitiveCount;
+
+    console.log('[MoodPharma DB] Current counts:', {
+      medications: medicationsCount,
+      doses: dosesCount,
+      moodEntries: moodCount,
+      cognitiveTests: cognitiveCount,
+      total: totalCount
+    });
+
+    // If database has data, mark migration as complete and skip
+    if (totalCount > 0) {
+      console.log('[MoodPharma DB] ✅ Database has', totalCount, 'records, marking migration as complete');
       await db.metadata.put({
         key: MIGRATION_FLAG_KEY,
         value: true,
@@ -534,31 +263,57 @@ export async function migrateLegacyData(): Promise<void> {
       return;
     }
 
+    // Database is empty - check migration flag
+    const migrationFlag = await db.metadata.get(MIGRATION_FLAG_KEY);
+    console.log('[MoodPharma DB] Migration flag:', migrationFlag);
+
+    if (migrationFlag?.value === true) {
+      console.log('[MoodPharma DB] ⚠️ Migration flag is set but database is empty! Attempting migration anyway...');
+      // Don't return - continue to attempt migration
+    }
+
+    console.log('[MoodPharma DB] Database is empty, checking for legacy data...');
+
     const legacyState = await loadLegacyState();
     const operations: Promise<unknown>[] = [];
 
+    console.log('[MoodPharma DB] Legacy state found:', {
+      medications: Array.isArray(legacyState.medications) ? legacyState.medications.length : 0,
+      doses: Array.isArray(legacyState.doses) ? legacyState.doses.length : 0,
+      moodEntries: Array.isArray(legacyState.moodEntries) ? legacyState.moodEntries.length : 0,
+      cognitiveTests: Array.isArray(legacyState.cognitiveTests) ? legacyState.cognitiveTests.length : 0
+    });
+
     const legacyMedications = legacyState.medications;
     if (Array.isArray(legacyMedications) && legacyMedications.length > 0) {
+      console.log('[MoodPharma DB] Migrating', legacyMedications.length, 'medications');
       operations.push(db.medications.bulkPut(legacyMedications.map((record) => ensureMedication(record as Medication))));
     }
 
     const legacyDoses = legacyState.doses;
     if (Array.isArray(legacyDoses) && legacyDoses.length > 0) {
+      console.log('[MoodPharma DB] Migrating', legacyDoses.length, 'doses');
       operations.push(db.doses.bulkPut(legacyDoses.map((record) => ensureDose(record as MedicationDose))));
     }
 
     const legacyMood = legacyState.moodEntries;
     if (Array.isArray(legacyMood) && legacyMood.length > 0) {
+      console.log('[MoodPharma DB] Migrating', legacyMood.length, 'mood entries');
       operations.push(db.moodEntries.bulkPut(legacyMood.map((record) => ensureMoodEntry(record as MoodEntry))));
     }
 
     const legacyTests = legacyState.cognitiveTests;
     if (Array.isArray(legacyTests) && legacyTests.length > 0) {
+      console.log('[MoodPharma DB] Migrating', legacyTests.length, 'cognitive tests');
       operations.push(db.cognitiveTests.bulkPut(legacyTests.map((record) => ensureCognitiveTest(record as CognitiveTest))));
     }
 
     if (operations.length > 0) {
+      console.log('[MoodPharma DB] Running', operations.length, 'migration operations...');
       await Promise.all(operations);
+      console.log('[MoodPharma DB] Migration completed successfully!');
+    } else {
+      console.log('[MoodPharma DB] No legacy data found to migrate');
     }
 
     await db.metadata.put({
@@ -567,6 +322,6 @@ export async function migrateLegacyData(): Promise<void> {
       updatedAt: Date.now()
     });
   } catch (error) {
-    console.error('[dexie-migration] Failed to migrate legacy data', error);
+    console.error('[MoodPharma DB] ❌ Failed to migrate legacy data', error);
   }
 }

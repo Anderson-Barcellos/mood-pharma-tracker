@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useKV } from '@github/spark/hooks';
+import { useMedications } from '@/hooks/use-medications';
+import { useDoses } from '@/hooks/use-doses';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Button } from '@/shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/shared/ui/dialog';
@@ -10,7 +11,6 @@ import { Textarea } from '@/shared/ui/textarea';
 import { Badge } from '@/shared/ui/badge';
 import { Plus, Pill, Pencil, Trash, ClockCounterClockwise } from '@phosphor-icons/react';
 import type { Medication, MedicationCategory, MedicationDose } from '@/shared/types';
-import { v4 as uuidv4 } from 'uuid';
 import MedicationDosesView from '@/features/doses/components/MedicationDosesView';
 
 const MEDICATION_CATEGORIES: MedicationCategory[] = [
@@ -24,8 +24,8 @@ const MEDICATION_CATEGORIES: MedicationCategory[] = [
 ];
 
 export default function MedicationsView() {
-  const [medications, setMedications] = useKV<Medication[]>('medications', []);
-  const [doses] = useKV<MedicationDose[]>('doses', []);
+  const { medications, createMedication, updateMedication, deleteMedication } = useMedications();
+  const { doses } = useDoses();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMed, setEditingMed] = useState<Medication | null>(null);
   const [viewDosesMed, setViewDosesMed] = useState<Medication | null>(null);
@@ -76,9 +76,8 @@ export default function MedicationsView() {
     setDialogOpen(true);
   };
 
-  const handleSave = () => {
-    const medicationData: Medication = {
-      id: editingMed?.id || uuidv4(),
+  const handleSave = async () => {
+    const medicationData = {
       name: formData.name,
       brandName: formData.brandName || undefined,
       category: formData.category,
@@ -86,27 +85,22 @@ export default function MedicationsView() {
       volumeOfDistribution: parseFloat(formData.volumeOfDistribution),
       bioavailability: parseFloat(formData.bioavailability),
       absorptionRate: parseFloat(formData.absorptionRate),
-      notes: formData.notes || undefined,
-      createdAt: editingMed?.createdAt || Date.now(),
-      updatedAt: Date.now()
+      notes: formData.notes || undefined
     };
 
-    setMedications((current) => {
-      const currentMeds = current || [];
-      if (editingMed) {
-        return currentMeds.map(m => m.id === editingMed.id ? medicationData : m);
-      } else {
-        return [...currentMeds, medicationData];
-      }
-    });
+    if (editingMed) {
+      await updateMedication(editingMed.id, medicationData);
+    } else {
+      await createMedication(medicationData);
+    }
 
     setDialogOpen(false);
     resetForm();
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this medication?')) {
-      setMedications((current) => (current || []).filter(m => m.id !== id));
+      await deleteMedication(id);
     }
   };
 
@@ -116,7 +110,7 @@ export default function MedicationsView() {
   };
 
   const getDoseCount = (medicationId: string) => {
-    return (doses || []).filter(d => d.medicationId === medicationId).length;
+    return doses.filter(d => d.medicationId === medicationId).length;
   };
 
   return (
@@ -249,7 +243,7 @@ export default function MedicationsView() {
         </Dialog>
       </div>
 
-      {(medications || []).length === 0 ? (
+      {medications.length === 0 ? (
         <Card className="border-dashed">
           <CardHeader>
             <CardTitle>No medications yet</CardTitle>
@@ -263,67 +257,88 @@ export default function MedicationsView() {
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {(medications || []).map(med => (
-            <Card key={med.id}>
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-2">
-                    <Pill className="w-5 h-5 text-primary" />
-                    <div>
-                      <CardTitle className="text-lg">{med.name}</CardTitle>
-                      {med.brandName && (
-                        <CardDescription className="text-xs">{med.brandName}</CardDescription>
+          {medications.map(med => {
+            // Check if medication has complete PK parameters
+            const hasPkParams =
+              Number.isFinite(med.halfLife) && med.halfLife > 0 &&
+              Number.isFinite(med.volumeOfDistribution) && med.volumeOfDistribution > 0 &&
+              Number.isFinite(med.bioavailability) && med.bioavailability > 0 &&
+              Number.isFinite(med.absorptionRate) && med.absorptionRate > 0;
+
+            return (
+              <Card key={med.id}>
+                <CardHeader>
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2">
+                      <Pill className="w-5 h-5 text-primary" />
+                      <div>
+                        <CardTitle className="text-lg">{med.name}</CardTitle>
+                        {med.brandName && (
+                          <CardDescription className="text-xs">{med.brandName}</CardDescription>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      {!hasPkParams && (
+                        <Badge variant="destructive" className="text-xs">Incompleto</Badge>
                       )}
+                      <Badge variant="outline">{med.category}</Badge>
                     </div>
                   </div>
-                  <Badge variant="outline">{med.category}</Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Half-life:</span>
-                    <span className="font-medium">{med.halfLife}h</span>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Half-life:</span>
+                      <span className="font-medium">{med.halfLife ? `${med.halfLife}h` : '—'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Vd:</span>
+                      <span className="font-medium">{med.volumeOfDistribution ? `${med.volumeOfDistribution} L/kg` : '—'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Bioavailability:</span>
+                      <span className="font-medium">{med.bioavailability ? `${(med.bioavailability * 100).toFixed(0)}%` : '—'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Absorption:</span>
+                      <span className="font-medium">{med.absorptionRate ? `${med.absorptionRate}/h` : '—'}</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Vd:</span>
-                    <span className="font-medium">{med.volumeOfDistribution} L/kg</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Bioavailability:</span>
-                    <span className="font-medium">{(med.bioavailability * 100).toFixed(0)}%</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Absorption:</span>
-                    <span className="font-medium">{med.absorptionRate}/h</span>
-                  </div>
-                </div>
-                {med.notes && (
-                  <p className="text-xs text-muted-foreground mt-3 pt-3 border-t">{med.notes}</p>
-                )}
-              </CardContent>
-              <CardFooter className="flex flex-col gap-2">
-                <Button 
-                  variant="secondary" 
-                  size="sm" 
-                  className="w-full" 
-                  onClick={() => handleViewDoses(med)}
-                >
-                  <ClockCounterClockwise className="w-4 h-4 mr-2" />
-                  View Doses ({getDoseCount(med.id)})
-                </Button>
-                <div className="flex gap-2 w-full">
-                  <Button variant="outline" size="sm" className="flex-1" onClick={() => openEditDialog(med)}>
-                    <Pencil className="w-4 h-4 mr-2" />
-                    Edit
+                  {!hasPkParams && (
+                    <div className="mt-3 pt-3 border-t">
+                      <p className="text-xs text-destructive">
+                        ⚠️ Parâmetros farmacocinéticos incompletos. Gráficos não serão exibidos até você completar os dados.
+                      </p>
+                    </div>
+                  )}
+                  {med.notes && (
+                    <p className="text-xs text-muted-foreground mt-3 pt-3 border-t">{med.notes}</p>
+                  )}
+                </CardContent>
+                <CardFooter className="flex flex-col gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => handleViewDoses(med)}
+                  >
+                    <ClockCounterClockwise className="w-4 h-4 mr-2" />
+                    View Doses ({getDoseCount(med.id)})
                   </Button>
-                  <Button variant="destructive" size="sm" onClick={() => handleDelete(med.id)}>
-                    <Trash className="w-4 h-4" />
-                  </Button>
-                </div>
-              </CardFooter>
-            </Card>
-          ))}
+                  <div className="flex gap-2 w-full">
+                    <Button variant="outline" size="sm" className="flex-1" onClick={() => openEditDialog(med)}>
+                      <Pencil className="w-4 h-4 mr-2" />
+                      Edit
+                    </Button>
+                    <Button variant="destructive" size="sm" onClick={() => handleDelete(med.id)}>
+                      <Trash className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </CardFooter>
+              </Card>
+            );
+          })}
         </div>
       )}
 

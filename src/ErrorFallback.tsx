@@ -4,9 +4,10 @@ import { Button } from '@/shared/ui/button';
 import { AlertTriangleIcon, RefreshCwIcon } from "lucide-react";
 
 export const ErrorFallback = ({ error, resetErrorBoundary }) => {
-  // When encountering an error in the development mode, rethrow it and don't display the boundary.
-  // The parent UI will take care of showing a more helpful dialog.
-  if (import.meta.env.DEV) throw error;
+  // Log error in development but still show the error UI
+  if (import.meta.env.DEV) {
+    console.error('[DEV] Error caught by ErrorBoundary:', error);
+  }
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -14,10 +15,6 @@ export const ErrorFallback = ({ error, resetErrorBoundary }) => {
         <Alert variant="destructive" className="mb-6">
           <AlertTriangleIcon />
           <AlertTitle>Mood & Pharma Tracker travou</AlertTitle>
-          <AlertDescription>
-            Bah, tchê, rolou uma falha inesperada no app independente. O detalhe do erro tá logo abaixo.
-            Recarrega a página ou reinicia o processo local. Se continuar quebrando, limpa os dados locais e sobe de novo.
-          <AlertTitle>O aplicativo travou em tempo de execução</AlertTitle>
           <AlertDescription>
             Algo inesperado rolou enquanto renderizávamos a interface. Os detalhes do erro aparecem abaixo — compartilha com o autor pra gente debugar rapidinho.
           </AlertDescription>

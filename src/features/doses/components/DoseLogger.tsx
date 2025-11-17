@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useKV } from '@github/spark/hooks';
+import { useMedications } from '@/hooks/use-medications';
+import { useDoses } from '@/hooks/use-doses';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
@@ -8,14 +9,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/shared/ui/dialog';
 import { Plus } from '@phosphor-icons/react';
 import type { Medication, MedicationDose } from '@/shared/types';
-import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { safeFormat } from '@/shared/utils';
+import { parseLocalDateTime } from '@/shared/utils/date-helpers';
+import { useProtectedAction } from '@/shared/components/ProtectedAction';
 
 export default function DoseLogger() {
-  const [medications] = useKV<Medication[]>('medications', []);
-  const [doses, setDoses] = useKV<MedicationDose[]>('doses', []);
+  const { medications } = useMedications();
+  const { doses, createDose } = useDoses();
+  const protectedAction = useProtectedAction();
   const [selectedMedicationId, setSelectedMedicationId] = useState('');
   const [doseAmount, setDoseAmount] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -30,39 +33,42 @@ export default function DoseLogger() {
       return;
     }
 
-    const medication = (medications || []).find(m => m.id === selectedMedicationId);
+    const medication = medications.find(m => m.id === selectedMedicationId);
     if (!medication) return;
 
-    const dateTime = new Date(`${selectedDate}T${selectedTime}`);
-    const timestamp = dateTime.getTime();
+    protectedAction(async () => {
+      try {
+        const timestamp = parseLocalDateTime(selectedDate, selectedTime);
 
-    const dose: MedicationDose = {
-      id: uuidv4(),
-      medicationId: selectedMedicationId,
-      timestamp,
-      doseAmount: parseFloat(doseAmount),
-      createdAt: Date.now()
-    };
+        await createDose({
+          medicationId: selectedMedicationId,
+          timestamp,
+          doseAmount: parseFloat(doseAmount)
+        });
 
-    setDoses((current) => [...(current || []), dose]);
-    
-    toast.success(`Logged ${doseAmount}mg of ${medication.name}`, {
-      description: safeFormat(timestamp, 'MMM d, h:mm a')
+        toast.success(`Logged ${doseAmount}mg of ${medication.name}`, {
+          description: safeFormat(timestamp, 'MMM d, h:mm a')
+        });
+
+        setSelectedMedicationId('');
+        setDoseAmount('');
+        setDialogOpen(false);
+
+        const newNow = new Date();
+        setSelectedDate(format(newNow, 'yyyy-MM-dd'));
+        setSelectedTime(format(newNow, 'HH:mm'));
+      } catch (error) {
+        toast.error('Invalid date/time', {
+          description: error instanceof Error ? error.message : 'Please check the date and time fields'
+        });
+      }
     });
-
-    setSelectedMedicationId('');
-    setDoseAmount('');
-    setDialogOpen(false);
-    
-    const newNow = new Date();
-    setSelectedDate(format(newNow, 'yyyy-MM-dd'));
-    setSelectedTime(format(newNow, 'HH:mm'));
   };
 
-  const recentDoses = [...(doses || [])].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
+  const recentDoses = [...doses].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
 
   const getMedicationName = (medicationId: string) => {
-    const med = (medications || []).find(m => m.id === medicationId);
+    const med = medications.find(m => m.id === medicationId);
     return med?.name || 'Unknown';
   };
 
@@ -75,9 +81,9 @@ export default function DoseLogger() {
       <CardContent className="space-y-4">
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button 
-              className="w-full" 
-              disabled={(medications || []).length === 0}
+            <Button
+              className="w-full"
+              disabled={medications.length === 0}
               onClick={() => {
                 const newNow = new Date();
                 setSelectedDate(format(newNow, 'yyyy-MM-dd'));
@@ -101,7 +107,7 @@ export default function DoseLogger() {
                     <SelectValue placeholder="Select medication..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {(medications || []).map(med => (
+                    {medications.map(med => (
                       <SelectItem key={med.id} value={med.id}>
                         {med.name}
                       </SelectItem>
