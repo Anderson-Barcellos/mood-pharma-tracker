@@ -18,7 +18,6 @@ import { useProtectedAction } from '@/shared/components/ProtectedAction';
 export default function DoseLogger() {
   const { medications } = useMedications();
   const { doses, createDose } = useDoses();
-  const protectedAction = useProtectedAction();
   const [selectedMedicationId, setSelectedMedicationId] = useState('');
   const [doseAmount, setDoseAmount] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -27,7 +26,7 @@ export default function DoseLogger() {
   const [selectedDate, setSelectedDate] = useState(format(now, 'yyyy-MM-dd'));
   const [selectedTime, setSelectedTime] = useState(format(now, 'HH:mm'));
 
-  const handleLogDose = () => {
+  const handleLogDose = async () => {
     if (!selectedMedicationId || !doseAmount) {
       toast.error('Please select a medication and enter dose amount');
       return;
@@ -40,29 +39,23 @@ export default function DoseLogger() {
       try {
         const timestamp = parseLocalDateTime(selectedDate, selectedTime);
 
-        await createDose({
-          medicationId: selectedMedicationId,
-          timestamp,
-          doseAmount: parseFloat(doseAmount)
-        });
-
-        toast.success(`Logged ${doseAmount}mg of ${medication.name}`, {
-          description: safeFormat(timestamp, 'MMM d, h:mm a')
-        });
-
-        setSelectedMedicationId('');
-        setDoseAmount('');
-        setDialogOpen(false);
-
-        const newNow = new Date();
-        setSelectedDate(format(newNow, 'yyyy-MM-dd'));
-        setSelectedTime(format(newNow, 'HH:mm'));
-      } catch (error) {
-        toast.error('Invalid date/time', {
-          description: error instanceof Error ? error.message : 'Please check the date and time fields'
-        });
-      }
+    await createDose({
+      medicationId: selectedMedicationId,
+      timestamp,
+      doseAmount: parseFloat(doseAmount)
     });
+
+    toast.success(`Logged ${doseAmount}mg of ${medication.name}`, {
+      description: safeFormat(timestamp, 'MMM d, h:mm a')
+    });
+
+    setSelectedMedicationId('');
+    setDoseAmount('');
+    setDialogOpen(false);
+
+    const newNow = new Date();
+    setSelectedDate(format(newNow, 'yyyy-MM-dd'));
+    setSelectedTime(format(newNow, 'HH:mm'));
   };
 
   const recentDoses = [...doses].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);

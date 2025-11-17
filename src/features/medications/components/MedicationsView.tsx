@@ -257,30 +257,16 @@ export default function MedicationsView() {
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {medications.map(med => {
-            // Check if medication has complete PK parameters
-            const hasPkParams =
-              Number.isFinite(med.halfLife) && med.halfLife > 0 &&
-              Number.isFinite(med.volumeOfDistribution) && med.volumeOfDistribution > 0 &&
-              Number.isFinite(med.bioavailability) && med.bioavailability > 0 &&
-              Number.isFinite(med.absorptionRate) && med.absorptionRate > 0;
-
-            return (
-              <Card key={med.id}>
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-2">
-                      <Pill className="w-5 h-5 text-primary" />
-                      <div>
-                        <CardTitle className="text-lg">{med.name}</CardTitle>
-                        {med.brandName && (
-                          <CardDescription className="text-xs">{med.brandName}</CardDescription>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      {!hasPkParams && (
-                        <Badge variant="destructive" className="text-xs">Incompleto</Badge>
+          {medications.map(med => (
+            <Card key={med.id}>
+              <CardHeader>
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2">
+                    <Pill className="w-5 h-5 text-primary" />
+                    <div>
+                      <CardTitle className="text-lg">{med.name}</CardTitle>
+                      {med.brandName && (
+                        <CardDescription className="text-xs">{med.brandName}</CardDescription>
                       )}
                       <Badge variant="outline">{med.category}</Badge>
                     </div>

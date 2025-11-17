@@ -1,6 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 import { Toaster } from '@/shared/ui/sonner';
-import { AppLayout, NavigationTab } from '@/shared/layouts';
+import { ChartLine, Pill, Smiley, Brain } from '@phosphor-icons/react';
+import DashboardPage from '@/features/analytics/pages/DashboardPage';
+import MedicationsPage from '@/features/medications/pages/MedicationsPage';
+import MoodPage from '@/features/mood/pages/MoodPage';
+import CognitivePage from '@/features/cognitive/pages/CognitivePage';
+import AnalyticsPage from '@/features/analytics/pages/AnalyticsPage';
 import { migrateLegacyData } from '@/core/database/db';
 import { loadServerData } from '@/core/services/server-data-loader';
 import { isAuthenticated, isLockEnabled } from '@/features/auth/services/simple-auth';
@@ -23,11 +29,10 @@ function App() {
   const [serverSyncPending, setServerSyncPending] = useState(true);
   const [authenticated, setAuthenticated] = useState(() => isAuthenticated());
 
-  const { medications = [], isLoading: medicationsLoading } = useMedications();
-  const { doses = [], isLoading: dosesLoading } = useDoses();
-  const { moodEntries = [], isLoading: moodLoading } = useMoodEntries();
-  const { cognitiveTests = [], isLoading: cognitiveLoading } = useCognitiveTests();
-  const { isSeeding } = useInitialSetup();
+  const { medications, isLoading: medicationsLoading } = useMedications();
+  const { doses, isLoading: dosesLoading } = useDoses();
+  const { moodEntries, isLoading: moodLoading } = useMoodEntries();
+  const { cognitiveTests, isLoading: cognitiveLoading } = useCognitiveTests();
 
   useEffect(() => {
     let cancelled = false;
@@ -68,11 +73,58 @@ function App() {
     return migrationPending || serverSyncPending || medicationsLoading || dosesLoading || moodLoading || cognitiveLoading || isSeeding;
   }, [migrationPending, serverSyncPending, medicationsLoading, dosesLoading, moodLoading, cognitiveLoading, isSeeding]);
 
-  const initializingMessage = useMemo(() => {
-    if (isSeeding) return '💊 Configurando medicações pessoais...';
-    if (serverSyncPending) return '🔄 Sincronizando com servidor...';
-    return 'Carregando dados locais...';
-  }, [isSeeding, serverSyncPending]);
+  return (
+    <div className="min-h-screen bg-background">
+      <Toaster />
+      {isInitializing && (
+        <div className="w-full bg-muted text-muted-foreground text-sm py-2 text-center">
+          Loading data...
+        </div>
+      )}
+      <header className="border-b border-border bg-card">
+        <div className="container mx-auto px-4 py-4">
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">
+            Mood & Pharma Tracker
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Personal therapeutic monitoring with pharmacokinetic modeling
+          </p>
+        </div>
+      </header>
+
+      <main className="container mx-auto px-4 py-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid">
+            <TabsTrigger value="dashboard" className="gap-2">
+              <ChartLine className="w-4 h-4" />
+              <span className="hidden sm:inline">Dashboard</span>
+            </TabsTrigger>
+            <TabsTrigger value="medications" className="gap-2">
+              <Pill className="w-4 h-4" />
+              <span className="hidden sm:inline">Medications</span>
+            </TabsTrigger>
+            <TabsTrigger value="mood" className="gap-2">
+              <Smiley className="w-4 h-4" />
+              <span className="hidden sm:inline">Mood</span>
+            </TabsTrigger>
+            <TabsTrigger value="cognitive" className="gap-2">
+              <Brain className="w-4 h-4" />
+              <span className="hidden sm:inline">Cognitive</span>
+            </TabsTrigger>
+            <TabsTrigger value="analytics" className="gap-2">
+              <ChartLine className="w-4 h-4" />
+              <span className="hidden sm:inline">Analytics</span>
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="dashboard" className="space-y-6">
+            <DashboardPage
+              medications={medications}
+              doses={doses}
+              moodEntries={moodEntries}
+              cognitiveTests={cognitiveTests}
+            />
+          </TabsContent>
 
   const renderContent = () => {
     switch (activeTab) {
@@ -119,19 +171,21 @@ function App() {
   //   return <LockScreen onSuccess={() => setAuthenticated(true)} />;
   // }
 
-  return (
-    <>
-      <Toaster />
-      <PWAInstallPrompt />
-      <AppLayout
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        isInitializing={isInitializing}
-        initializingMessage={initializingMessage}
-      >
-        {renderContent()}
-      </AppLayout>
-    </>
+          <TabsContent value="cognitive" className="space-y-6">
+            <CognitivePage />
+          </TabsContent>
+
+          <TabsContent value="analytics" className="space-y-6">
+            <AnalyticsPage
+              medications={medications}
+              doses={doses}
+              moodEntries={moodEntries}
+              cognitiveTests={cognitiveTests}
+            />
+          </TabsContent>
+        </Tabs>
+      </main>
+    </div>
   );
 }
 

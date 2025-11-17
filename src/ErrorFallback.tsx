@@ -14,9 +14,9 @@ export const ErrorFallback = ({ error, resetErrorBoundary }) => {
       <div className="w-full max-w-md">
         <Alert variant="destructive" className="mb-6">
           <AlertTriangleIcon />
-          <AlertTitle>Mood & Pharma Tracker travou</AlertTitle>
+          <AlertTitle>Application Error</AlertTitle>
           <AlertDescription>
-            Algo inesperado rolou enquanto renderizávamos a interface. Os detalhes do erro aparecem abaixo — compartilha com o autor pra gente debugar rapidinho.
+            An unexpected error occurred. Please check the error details below and try reloading the page.
           </AlertDescription>
         </Alert>
         

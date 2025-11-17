@@ -1,6 +1,5 @@
-'use client';
-
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo } from 'react';
+import { useMoodEntries } from '@/hooks/use-mood-entries';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -35,107 +34,159 @@ import { cn } from '@/shared/utils';
 import { parseLocalDateTime } from '@/shared/utils/date-helpers';
 import type { MoodEntry } from '@/shared/types';
 
-// Utility to detect mobile
-const useIsMobile = () => {
-  const [isMobile, setIsMobile] = useState(false);
+export default function MoodView() {
+  const { moodEntries, createMoodEntry, updateMoodEntry, deleteMoodEntry } = useMoodEntries();
 
-  useState(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 768);
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  });
-
-  return isMobile;
-};
-
-// Emoji mapping for mood scores
-const getMoodEmoji = (score: number) => {
-  if (score >= 9) return { icon: Smiley, color: 'text-green-500', label: 'Excelente' };
-  if (score >= 7) return { icon: SmileyWink, color: 'text-emerald-500', label: 'Muito Bom' };
-  if (score >= 5) return { icon: SmileyMeh, color: 'text-amber-500', label: 'Neutro' };
-  if (score >= 3) return { icon: SmileySad, color: 'text-orange-500', label: 'Ruim' };
-  return { icon: SmileyXEyes, color: 'text-red-500', label: 'Terrível' };
-};
-
-// Gradient for mood cards based on score
-const getMoodGradient = (score: number) => {
-  if (score >= 7) return 'from-emerald-500/10 to-green-500/5';
-  if (score >= 4) return 'from-amber-500/10 to-yellow-500/5';
-  return 'from-red-500/10 to-orange-500/5';
-};
-
-// Mood Slider Component with reactive emoji
-const MoodSlider = ({
-  value,
-  onChange,
-  label
-}: {
-  value: number;
-  onChange: (val: number) => void;
-  label: string;
-}) => {
-  const { icon: Icon, color, label: moodLabel } = getMoodEmoji(value);
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <Label className="text-sm font-medium">{label}</Label>
-        <div className="flex items-center gap-2">
-          <Icon className={cn('w-6 h-6 transition-all duration-300', color)} weight="fill" />
-          <span className="text-lg font-bold min-w-[3rem] text-right">{value}/10</span>
-        </div>
-      </div>
-      <Slider
-        value={[value]}
-        onValueChange={(vals) => onChange(vals[0])}
-        min={0}
-        max={10}
-        step={1}
-        className="w-full"
-      />
-      <div className="flex justify-between text-xs text-muted-foreground">
-        <span>Terrível</span>
-        <span className={cn('font-medium transition-all', color)}>{moodLabel}</span>
-        <span>Excelente</span>
-      </div>
-    </div>
-  );
-};
-
-// Quick Log Form Component
-const QuickLogForm = ({
-  onClose,
-  onSubmit
-}: {
-  onClose: () => void;
-  onSubmit: (data: any) => void;
-}) => {
   const [moodScore, setMoodScore] = useState(5);
-  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [time, setTime] = useState(format(new Date(), 'HH:mm'));
+  const [anxietyLevel, setAnxietyLevel] = useState<number | undefined>(undefined);
+  const [energyLevel, setEnergyLevel] = useState<number | undefined>(undefined);
+  const [focusLevel, setFocusLevel] = useState<number | undefined>(undefined);
+  const [sensitivityLevel, setSensitivityLevel] = useState<number | undefined>(undefined);
+  const [motivationLevel, setMotivationLevel] = useState<number | undefined>(undefined);
   const [notes, setNotes] = useState('');
   const [showExtended, setShowExtended] = useState(false);
-  const [anxietyLevel, setAnxietyLevel] = useState<number>(5);
-  const [energyLevel, setEnergyLevel] = useState<number>(5);
-  const [focusLevel, setFocusLevel] = useState<number>(5);
 
-  const handleSubmit = () => {
-    try {
-      const timestamp = parseLocalDateTime(date, time);
-      onSubmit({
-        timestamp,
-        moodScore,
-        anxietyLevel: showExtended ? anxietyLevel : undefined,
-        energyLevel: showExtended ? energyLevel : undefined,
-        focusLevel: showExtended ? focusLevel : undefined,
-        notes: notes.trim() || undefined
-      });
-    } catch (error) {
-      toast.error('Invalid date/time', {
-        description: error instanceof Error ? error.message : 'Please check the date and time fields'
-      });
+  const [quickDialogOpen, setQuickDialogOpen] = useState(false);
+  const [quickMoodScore, setQuickMoodScore] = useState(5);
+  const [quickDate, setQuickDate] = useState('');
+  const [quickTime, setQuickTime] = useState('');
+
+  const [entriesDialogOpen, setEntriesDialogOpen] = useState(false);
+  
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<MoodEntry | null>(null);
+  const [editMood, setEditMood] = useState(5);
+  const [editAnxiety, setEditAnxiety] = useState<number | undefined>(undefined);
+  const [editEnergy, setEditEnergy] = useState<number | undefined>(undefined);
+  const [editFocus, setEditFocus] = useState<number | undefined>(undefined);
+  const [editSensitivity, setEditSensitivity] = useState<number | undefined>(undefined);
+  const [editMotivation, setEditMotivation] = useState<number | undefined>(undefined);
+  const [editNotes, setEditNotes] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editTime, setEditTime] = useState('');
+
+  const getMoodIcon = (score: number) => {
+    if (score >= 7) return <Smiley className="w-8 h-8 text-primary" weight="fill" />;
+    if (score >= 4) return <SmileyMeh className="w-8 h-8 text-muted-foreground" weight="fill" />;
+    return <SmileySad className="w-8 h-8 text-destructive" weight="fill" />;
+  };
+
+  const handleSave = async () => {
+    await createMoodEntry({
+      timestamp: Date.now(),
+      moodScore,
+      anxietyLevel,
+      energyLevel,
+      focusLevel,
+      sensitivityLevel,
+      motivationLevel,
+      notes: notes || undefined
+    });
+
+    toast.success('Mood entry saved');
+
+    setMoodScore(5);
+    setAnxietyLevel(undefined);
+    setEnergyLevel(undefined);
+    setFocusLevel(undefined);
+    setSensitivityLevel(undefined);
+    setMotivationLevel(undefined);
+    setNotes('');
+    setShowExtended(false);
+  };
+
+  const handleQuickLog = async () => {
+    if (!quickDate || !quickTime) {
+      toast.error('Please select date and time');
+      return;
     }
+
+    const dateTime = new Date(`${quickDate}T${quickTime}`);
+    const timestamp = dateTime.getTime();
+
+    await createMoodEntry({
+      timestamp,
+      moodScore: quickMoodScore
+    });
+
+    toast.success('Quick mood logged');
+    setQuickDialogOpen(false);
+
+    const now = new Date();
+    setQuickDate(format(now, 'yyyy-MM-dd'));
+    setQuickTime(format(now, 'HH:mm'));
+    setQuickMoodScore(5);
+  };
+
+  const handleEdit = (entry: MoodEntry) => {
+    setEditingEntry(entry);
+    setEditMood(entry.moodScore);
+    setEditAnxiety(entry.anxietyLevel);
+    setEditEnergy(entry.energyLevel);
+    setEditFocus(entry.focusLevel);
+    setEditSensitivity(entry.sensitivityLevel);
+    setEditMotivation(entry.motivationLevel);
+    setEditNotes(entry.notes || '');
+    setEditDate(safeFormat(entry.timestamp, 'yyyy-MM-dd', ''));
+    setEditTime(safeFormat(entry.timestamp, 'HH:mm', ''));
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingEntry || !editDate || !editTime) return;
+
+    const dateTime = new Date(`${editDate}T${editTime}`);
+    const timestamp = dateTime.getTime();
+
+    await updateMoodEntry(editingEntry.id, {
+      timestamp,
+      moodScore: editMood,
+      anxietyLevel: editAnxiety,
+      energyLevel: editEnergy,
+      focusLevel: editFocus,
+      sensitivityLevel: editSensitivity,
+      motivationLevel: editMotivation,
+      notes: editNotes || undefined
+    });
+
+    toast.success('Mood entry updated');
+    setEditDialogOpen(false);
+  };
+
+  const handleDelete = async (entryId: string) => {
+    if (window.confirm('Delete this mood entry?')) {
+      await deleteMoodEntry(entryId);
+      toast.success('Mood entry deleted');
+    }
+  };
+
+  const recentEntries = useMemo(() => {
+    return [...moodEntries].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
+  }, [moodEntries]);
+
+  const chartData = useMemo(() => {
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    return [...moodEntries]
+      .filter(e => e.timestamp >= thirtyDaysAgo)
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .map(e => ({
+        timestamp: safeFormat(e.timestamp, 'MMM d', 'N/A'),
+        time: e.timestamp,
+        mood: e.moodScore,
+        anxiety: e.anxietyLevel,
+        energy: e.energyLevel,
+        focus: e.focusLevel,
+        sensitivity: e.sensitivityLevel,
+        motivation: e.motivationLevel
+      }));
+  }, [moodEntries]);
+
+  const initializeQuickLog = () => {
+    const now = new Date();
+    setQuickDate(format(now, 'yyyy-MM-dd'));
+    setQuickTime(format(now, 'HH:mm'));
+    setQuickMoodScore(5);
+    setQuickDialogOpen(true);
   };
 
   return (
@@ -218,28 +269,46 @@ const QuickLogForm = ({
                 <Label className="text-sm">Foco</Label>
                 <span className="text-sm font-medium">{focusLevel}/10</span>
               </div>
-              <Slider
-                value={[focusLevel]}
-                onValueChange={(vals) => setFocusLevel(vals[0])}
-                min={0}
-                max={10}
-                step={1}
-              />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
-      <div className="space-y-2">
-        <Label className="text-sm">Notas (opcional)</Label>
-        <Textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Como você está se sentindo? O que aconteceu hoje?"
-          rows={3}
-          className="resize-none"
-        />
-      </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Sensitivity Level</Label>
+                  <span className="text-lg font-medium">{sensitivityLevel ?? '-'}</span>
+                </div>
+                <Slider
+                  value={[sensitivityLevel ?? 5]}
+                  onValueChange={(value) => setSensitivityLevel(value[0])}
+                  min={0}
+                  max={10}
+                  step={1}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Motivation Level</Label>
+                  <span className="text-lg font-medium">{motivationLevel ?? '-'}</span>
+                </div>
+                <Slider
+                  value={[motivationLevel ?? 5]}
+                  onValueChange={(value) => setMotivationLevel(value[0])}
+                  min={0}
+                  max={10}
+                  step={1}
+                />
+              </div>
+            </>
+          )}
+
+          <div className="space-y-2">
+            <Label>Notes (optional)</Label>
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Add any relevant notes..."
+              rows={3}
+            />
+          </div>
 
       <div className="flex gap-2 pt-2">
         <Button variant="outline" onClick={onClose} className="flex-1">
@@ -278,11 +347,40 @@ const MoodEntryCard = ({
     setIsEditing(false);
   };
 
-  const handleCancel = () => {
-    setEditedMood(entry.moodScore);
-    setEditedNotes(entry.notes || '');
-    setIsEditing(false);
-  };
+      {chartData.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Mood Trend (Last 30 Days)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="timestamp" />
+                <YAxis domain={[0, 10]} />
+                <Tooltip />
+                <Legend />
+                <Line type="monotone" dataKey="mood" stroke="#10b981" name="Mood" />
+                {chartData.some(d => d.anxiety !== undefined) && (
+                  <Line type="monotone" dataKey="anxiety" stroke="#f59e0b" name="Anxiety" />
+                )}
+                {chartData.some(d => d.energy !== undefined) && (
+                  <Line type="monotone" dataKey="energy" stroke="#3b82f6" name="Energy" />
+                )}
+                {chartData.some(d => d.focus !== undefined) && (
+                  <Line type="monotone" dataKey="focus" stroke="#8b5cf6" name="Focus" />
+                )}
+                {chartData.some(d => d.sensitivity !== undefined) && (
+                  <Line type="monotone" dataKey="sensitivity" stroke="#ec4899" name="Sensitivity" />
+                )}
+                {chartData.some(d => d.motivation !== undefined) && (
+                  <Line type="monotone" dataKey="motivation" stroke="#14b8a6" name="Motivation" />
+                )}
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
 
   return (
     <motion.div
@@ -346,6 +444,12 @@ const MoodEntryCard = ({
                         <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-700 dark:text-purple-300">
                           Foco: {entry.focusLevel}
                         </span>
+                      )}
+                      {entry.sensitivityLevel !== undefined && (
+                        <span className="text-sm text-muted-foreground">Sensitivity: {entry.sensitivityLevel}</span>
+                      )}
+                      {entry.motivationLevel !== undefined && (
+                        <span className="text-sm text-muted-foreground">Motivation: {entry.motivationLevel}</span>
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
@@ -411,143 +515,62 @@ export default function MoodView() {
       filtered = filtered.filter(e => e.timestamp >= monthAgo);
     }
 
-    // Search filter
-    if (searchQuery) {
-      filtered = filtered.filter(e =>
-        e.notes?.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-
-    return filtered.sort((a, b) => b.timestamp - a.timestamp);
-  }, [moodEntries, timeFilter, searchQuery]);
-
-  const handleQuickLog = useCallback(async (data: any) => {
-    try {
-      await createMoodEntry(data);
-      toast.success('Humor registrado com sucesso!');
-      setQuickLogOpen(false);
-    } catch (error) {
-      toast.error('Erro ao salvar registro');
-      console.error(error);
-    }
-  }, [createMoodEntry]);
-
-  const handleEdit = useCallback(async (entry: MoodEntry) => {
-    try {
-      await updateMoodEntry(entry.id, {
-        moodScore: entry.moodScore,
-        anxietyLevel: entry.anxietyLevel,
-        energyLevel: entry.energyLevel,
-        focusLevel: entry.focusLevel,
-        notes: entry.notes
-      });
-      toast.success('Registro atualizado!');
-    } catch (error) {
-      toast.error('Erro ao atualizar');
-      console.error(error);
-    }
-  }, [updateMoodEntry]);
-
-  const handleDelete = useCallback(async (id: string) => {
-    if (window.confirm('Tem certeza que deseja deletar este registro?')) {
-      try {
-        await deleteMoodEntry(id);
-        toast.success('Registro deletado');
-      } catch (error) {
-        toast.error('Erro ao deletar');
-        console.error(error);
-      }
-    }
-  }, [deleteMoodEntry]);
-
-  const QuickLogTrigger = isMobile ? (
-    <Drawer open={quickLogOpen} onOpenChange={setQuickLogOpen}>
-      <DrawerTrigger asChild>
-        <motion.button
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.95 }}
-          className={cn(
-            'fixed bottom-6 right-6 z-50',
-            'w-14 h-14 rounded-full shadow-lg',
-            'bg-primary text-primary-foreground',
-            'flex items-center justify-center',
-            'hover:shadow-xl transition-shadow'
-          )}
-        >
-          <Plus className="w-6 h-6" weight="bold" />
-        </motion.button>
-      </DrawerTrigger>
-      <DrawerContent className="px-4 pb-6">
-        <DrawerHeader>
-          <DrawerTitle>Registrar Humor</DrawerTitle>
-        </DrawerHeader>
-        <QuickLogForm onClose={() => setQuickLogOpen(false)} onSubmit={handleQuickLog} />
-      </DrawerContent>
-    </Drawer>
-  ) : (
-    <Dialog open={quickLogOpen} onOpenChange={setQuickLogOpen}>
-      <Button onClick={() => setQuickLogOpen(true)} size="lg" className="shadow-md">
-        <Plus className="w-5 h-5 mr-2" weight="bold" />
-        Novo Registro
-      </Button>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Registrar Humor</DialogTitle>
-        </DialogHeader>
-        <QuickLogForm onClose={() => setQuickLogOpen(false)} onSubmit={handleQuickLog} />
-      </DialogContent>
-    </Dialog>
-  );
-
-  return (
-    <div className="space-y-6 pb-20 md:pb-6">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">Rastreamento de Humor</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Monitore seu estado emocional ao longo do tempo
-          </p>
-        </div>
-        {!isMobile && QuickLogTrigger}
-      </div>
-
-      {/* Search and Filter */}
-      <Card className="border-0 shadow-sm bg-card/50 backdrop-blur-sm">
-        <CardContent className="p-4 space-y-3">
-          <div className="relative">
-            <MagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar nas notas..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-
-          <Tabs value={timeFilter} onValueChange={(v) => setTimeFilter(v as any)}>
-            <TabsList className="grid grid-cols-4 w-full">
-              <TabsTrigger value="all" className="text-xs">Todos</TabsTrigger>
-              <TabsTrigger value="today" className="text-xs">Hoje</TabsTrigger>
-              <TabsTrigger value="week" className="text-xs">Semana</TabsTrigger>
-              <TabsTrigger value="month" className="text-xs">Mês</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </CardContent>
-      </Card>
-
-      {/* Timeline */}
-      <div className="space-y-3">
-        {isLoading ? (
+      <Dialog open={entriesDialogOpen} onOpenChange={setEntriesDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>All Mood Entries</DialogTitle>
+            <DialogDescription>
+              {moodEntries.length} total entries
+            </DialogDescription>
+          </DialogHeader>
           <div className="space-y-3">
-            {[1, 2, 3].map(i => (
-              <Card key={i} className="p-4">
-                <div className="flex gap-3">
-                  <Skeleton className="w-10 h-10 rounded-full" />
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-4 w-24" />
-                    <Skeleton className="h-3 w-32" />
-                    <Skeleton className="h-3 w-full" />
+            {[...moodEntries].sort((a, b) => b.timestamp - a.timestamp).map(entry => (
+              <Card key={entry.id}>
+                <CardContent className="pt-4">
+                  <div className="flex items-start gap-3">
+                    {getMoodIcon(entry.moodScore)}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">Mood: {entry.moodScore}/10</span>
+                        {entry.anxietyLevel !== undefined && (
+                          <span className="text-sm text-muted-foreground">Anxiety: {entry.anxietyLevel}</span>
+                        )}
+                        {entry.energyLevel !== undefined && (
+                          <span className="text-sm text-muted-foreground">Energy: {entry.energyLevel}</span>
+                        )}
+                        {entry.focusLevel !== undefined && (
+                          <span className="text-sm text-muted-foreground">Focus: {entry.focusLevel}</span>
+                        )}
+                        {entry.sensitivityLevel !== undefined && (
+                          <span className="text-sm text-muted-foreground">Sensitivity: {entry.sensitivityLevel}</span>
+                        )}
+                        {entry.motivationLevel !== undefined && (
+                          <span className="text-sm text-muted-foreground">Motivation: {entry.motivationLevel}</span>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {safeFormat(entry.timestamp, 'MMM d, yyyy h:mm a')}
+                      </p>
+                      {entry.notes && (
+                        <p className="text-sm mt-1">{entry.notes}</p>
+                      )}
+                    </div>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEdit(entry)}
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleDelete(entry.id)}
+                      >
+                        <Trash className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </Card>
@@ -616,9 +639,48 @@ export default function MoodView() {
                 <p className="text-xs text-muted-foreground">Melhor</p>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Sensitivity Level (optional)</Label>
+                <span className="text-lg font-medium">{editSensitivity ?? '-'}</span>
+              </div>
+              <Slider
+                value={[editSensitivity ?? 5]}
+                onValueChange={(value) => setEditSensitivity(value[0])}
+                min={0}
+                max={10}
+                step={1}
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Motivation Level (optional)</Label>
+                <span className="text-lg font-medium">{editMotivation ?? '-'}</span>
+              </div>
+              <Slider
+                value={[editMotivation ?? 5]}
+                onValueChange={(value) => setEditMotivation(value[0])}
+                min={0}
+                max={10}
+                step={1}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Notes</Label>
+              <Textarea
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                placeholder="Notes..."
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveEdit}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
