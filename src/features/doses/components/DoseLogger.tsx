@@ -9,10 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/shared/ui/dialog';
 import { Plus } from '@phosphor-icons/react';
 import type { Medication, MedicationDose } from '@/shared/types';
-import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { safeFormat } from '@/shared/utils';
+import { parseLocalDateTime } from '@/shared/utils/date-helpers';
+import { useProtectedAction } from '@/shared/components/ProtectedAction';
 
 export default function DoseLogger() {
   const { medications } = useMedications();
@@ -34,8 +35,9 @@ export default function DoseLogger() {
     const medication = medications.find(m => m.id === selectedMedicationId);
     if (!medication) return;
 
-    const dateTime = new Date(`${selectedDate}T${selectedTime}`);
-    const timestamp = dateTime.getTime();
+    protectedAction(async () => {
+      try {
+        const timestamp = parseLocalDateTime(selectedDate, selectedTime);
 
     await createDose({
       medicationId: selectedMedicationId,

@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerador de Matrizes Lógicas - Teste de Prompts Gemini</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .matrix-cell, .option-cell {
+            aspect-ratio: 1 / 1;
+            transition: all 0.3s ease;
+        }
+        .correct-answer {
+            box-shadow: 0 0 0 4px #22c55e;
+        }
+        .incorrect-answer {
+            box-shadow: 0 0 0 4px #ef4444;
+        }
+        .revealed-answer {
+            background-color: #dbeafe;
+            border-color: #3b82f6;
+        }
+        #loader {
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #00adad;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .difficulty-label input:checked + div {
+            border-color: #00adad;
+            background-color: #e0f2f1;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        .gradient-bg {
+            background: linear-gradient(135deg, #e0f2f1 0%, #f3e5f5 50%, #e1f5fe 100%);
+            background-size: 200% 200%;
+            animation: gradient 15s ease infinite;
+        }
+        @keyframes gradient {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div class="w-full max-w-3xl glass-card rounded-3xl shadow-2xl p-6 md:p-10">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-900 mb-2">🧠 Gerador de Matrizes Lógicas</h1>
+            <p class="text-gray-600 mt-2">Teste e refine prompts do Gemini Pro para Matrizes Progressivas de Raven</p>
+        </header>
+
+        <main>
+            <!-- API Key Input -->
+            <div class="mb-6 p-5 bg-white/50 rounded-xl border border-gray-200">
+                <label for="api-key-input" class="block text-lg font-semibold text-gray-800 mb-3">Chave da API Gemini</label>
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <input
+                        type="password"
+                        id="api-key-input"
+                        class="flex-grow p-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition bg-white"
+                        placeholder="Cole sua chave da API aqui">
+                    <button
+                        id="save-key-btn"
+                        class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-6 rounded-lg transition-transform transform hover:scale-105 shadow-md">
+                        Salvar Chave
+                    </button>
+                </div>
+                <p id="api-key-feedback" class="text-sm text-gray-600 mt-2">Configure sua chave da API do Google AI Studio</p>
+            </div>
+
+            <!-- Difficulty Selector -->
+            <div class="mb-6 p-5 bg-white/50 rounded-xl border border-gray-200">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">Nível de Dificuldade</h3>
+                <div id="difficulty-selector" class="flex justify-center gap-4">
+                    <label class="difficulty-label cursor-pointer">
+                        <input type="radio" name="difficulty" value="normal" class="sr-only" checked>
+                        <div class="rounded-lg border-2 border-gray-300 py-3 px-8 transition-all font-medium">Normal</div>
+                    </label>
+                    <label class="difficulty-label cursor-pointer">
+                        <input type="radio" name="difficulty" value="difficult" class="sr-only">
+                        <div class="rounded-lg border-2 border-gray-300 py-3 px-8 transition-all font-medium">Difícil</div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Matrix Display -->
+            <div id="matrix-container" class="grid grid-cols-3 gap-3 md:gap-4 p-6 bg-white/60 rounded-2xl mb-6 relative min-h-[400px]">
+                 <!-- Loader -->
+                <div id="loader-container" class="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center rounded-2xl hidden z-10">
+                    <div class="flex flex-col items-center gap-3">
+                        <div id="loader"></div>
+                        <p class="text-sm text-gray-600 font-medium">Gerando matriz...</p>
+                    </div>
+                </div>
+                <!-- Cells will be generated by JavaScript -->
+            </div>
+
+            <!-- Options Display -->
+            <div id="options-container" class="grid grid-cols-3 sm:grid-cols-6 gap-3 md:gap-4 mb-6 min-h-[120px]">
+                <!-- Options will be generated by JavaScript -->
+            </div>
+
+            <!-- Explanation Container -->
+            <div id="explanation-container" class="bg-blue-50 border-l-4 border-blue-500 p-5 rounded-r-xl mt-6 mb-6 hidden">
+                <h4 class="font-bold text-blue-900 text-lg mb-2">Lógica da Matriz:</h4>
+                <p id="explanation-text" class="text-blue-800 mb-3"></p>
+                <div id="patterns-container" class="mt-3"></div>
+                <div id="source-info" class="mt-3 pt-3 border-t border-blue-200 text-xs text-blue-700"></div>
+            </div>
+
+            <!-- Feedback Message -->
+            <div id="feedback" class="text-center h-8 mb-4 text-lg font-semibold"></div>
+
+            <!-- Control Buttons -->
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <button
+                    id="reveal-btn"
+                    class="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 px-8 rounded-lg transition-transform transform hover:scale-105 shadow-md disabled:bg-gray-400 disabled:cursor-not-allowed disabled:transform-none"
+                    disabled>
+                    Ver Explicação
+                </button>
+                <button
+                    id="new-matrix-btn"
+                    class="w-full sm:w-auto bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-8 rounded-lg transition-transform transform hover:scale-105 shadow-md disabled:bg-gray-400 disabled:cursor-not-allowed disabled:transform-none">
+                    Gerar Nova Matriz
+                </button>
+            </div>
+        </main>
+    </div>
+
+    <footer class="text-center mt-8 text-gray-700 text-sm">
+        <p class="mb-1">🧠 Ambiente de testes para refinamento de prompts</p>
+        <p class="text-xs text-gray-600">Edite <code class="bg-white/50 px-2 py-1 rounded">config.js</code> para modificar os prompts do Gemini</p>
+    </footer>
+
+<!-- Load config first -->
+<script src="config.js"></script>
+
+<script>
+// --- DOM Elements ---
+const matrixContainer = document.getElementById('matrix-container');
+const optionsContainer = document.getElementById('options-container');
+const newMatrixBtn = document.getElementById('new-matrix-btn');
+const revealBtn = document.getElementById('reveal-btn');
+const feedbackEl = document.getElementById('feedback');
+const loaderContainer = document.getElementById('loader-container');
+const difficultySelector = document.getElementById('difficulty-selector');
+const explanationContainer = document.getElementById('explanation-container');
+const explanationText = document.getElementById('explanation-text');
+const patternsContainer = document.getElementById('patterns-container');
+const sourceInfo = document.getElementById('source-info');
+const apiKeyInput = document.getElementById('api-key-input');
+const saveKeyBtn = document.getElementById('save-key-btn');
+const apiKeyFeedback = document.getElementById('api-key-feedback');
+
+// --- Constants ---
+const STORAGE_KEY = 'gemini_api_key_test';
+const SHAPES = ['circle', 'square', 'triangle', 'cross', 'diamond'];
+const COLORS = ['#374151', '#9ca3af', '#f3f4f6'];
+const FILLS = ['solid', 'outline', 'striped'];
+
+// --- Game State ---
+let currentProblem = null;
+let problemLocked = false;
+let isLoading = false;
+
+// --- SVG Drawing Functions ---
+function createSVGElement(shapeDef) {
+    if (!shapeDef) return document.createElement('div');
+    const svgNS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute('viewBox', '0 0 100 100');
+    svg.setAttribute('class', 'w-full h-full');
+
+    const isOutlined = shapeDef.fill === 'outline';
+    const isStriped = shapeDef.fill === 'striped';
+    const strokeColor = shapeDef.color === COLORS[2] ? COLORS[0] : shapeDef.color;
+    const colorId = (shapeDef.color || '#000000').replace('#', '');
+
+    if (isStriped) {
+        const pattern = document.createElementNS(svgNS, 'pattern');
+        pattern.setAttribute('id', `stripe-${colorId}`);
+        pattern.setAttribute('patternUnits', 'userSpaceOnUse');
+        pattern.setAttribute('width', '10');
+        pattern.setAttribute('height', '10');
+        const path = document.createElementNS(svgNS, 'path');
+        path.setAttribute('d', 'M-1,1 l2,-2 M0,10 l10,-10 M9,11 l2,-2');
+        path.setAttribute('stroke', strokeColor);
+        path.setAttribute('stroke-width', '2');
+        pattern.appendChild(path);
+        const defs = document.createElementNS(svgNS, 'defs');
+        defs.appendChild(pattern);
+        svg.appendChild(defs);
+    }
+
+    let element;
+    const size = (shapeDef.size || 0.6) * 100;
+    const center = 50;
+
+    switch (shapeDef.shape) {
+        case 'circle':
+            element = document.createElementNS(svgNS, 'circle');
+            element.setAttribute('cx', center);
+            element.setAttribute('cy', center);
+            element.setAttribute('r', size / 2);
+            break;
+        case 'square':
+            element = document.createElementNS(svgNS, 'rect');
+            element.setAttribute('x', center - size / 2);
+            element.setAttribute('y', center - size / 2);
+            element.setAttribute('width', size);
+            element.setAttribute('height', size);
+            break;
+        case 'triangle':
+            element = document.createElementNS(svgNS, 'polygon');
+            const h = (Math.sqrt(3) / 2) * size;
+            element.setAttribute('points', `${center},${center-h/2} ${center-size/2},${center+h/2} ${center+size/2},${center+h/2}`);
+            break;
+        case 'cross':
+             element = document.createElementNS(svgNS, 'path');
+             const arm = size * 0.2;
+             element.setAttribute('d', `M${center-arm},${center-size/2} H${center+arm} V${center-arm} H${center+size/2} V${center+arm} H${center+arm} V${center+size/2} H${center-arm} V${center+arm} H${center-size/2} V${center-arm} Z`);
+             break;
+        case 'diamond':
+            element = document.createElementNS(svgNS, 'polygon');
+            element.setAttribute('points', `${center},${center-size/2} ${center+size/2},${center} ${center},${center+size/2} ${center-size/2},${center}`);
+            break;
+    }
+
+    if (element) {
+        element.setAttribute('fill', isOutlined ? 'none' : (isStriped ? `url(#stripe-${colorId})` : (shapeDef.color || '#000000')));
+        element.setAttribute('stroke', strokeColor);
+        element.setAttribute('stroke-width', isOutlined ? '8' : '0');
+        element.setAttribute('transform', `rotate(${shapeDef.rotation || 0} 50 50)`);
+        svg.appendChild(element);
+    }
+
+    return svg;
+}
+
+// --- API Key Management ---
+function saveApiKey() {
+    const apiKey = apiKeyInput.value.trim();
+    if (apiKey) {
+        localStorage.setItem(STORAGE_KEY, apiKey);
+        apiKeyFeedback.textContent = 'Chave da API salva no navegador.';
+        apiKeyFeedback.className = 'text-sm text-green-600 mt-2 font-medium';
+    } else {
+        apiKeyFeedback.textContent = 'Por favor, insira uma chave da API válida.';
+        apiKeyFeedback.className = 'text-sm text-red-600 mt-2';
+    }
+}
+
+function loadApiKey() {
+    const savedKey = localStorage.getItem(STORAGE_KEY);
+    if (savedKey) {
+        apiKeyInput.value = savedKey;
+    }
+}
+
+function getApiKey() {
+    return apiKeyInput.value.trim() || localStorage.getItem(STORAGE_KEY);
+}
+
+// --- Gemini API Call ---
+async function generateProblemWithGemini() {
+    if (isLoading) return;
+
+    const apiKey = getApiKey();
+    if (!apiKey) {
+        apiKeyFeedback.textContent = 'Por favor, insira e salve sua chave da API para gerar um desafio.';
+        apiKeyFeedback.className = 'text-sm text-red-600 mt-2';
+        apiKeyInput.focus();
+        return;
+    }
+
+    setLoading(true);
+
+    const difficulty = document.querySelector('input[name="difficulty"]:checked').value;
+    const prompt = window.COGNITIVE_TEST_CONFIG.buildGeminiPrompt(difficulty);
+
+    const model = 'gemini-2.0-flash-exp';
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    const payload = {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+            temperature: 0.4,
+            maxOutputTokens: 2048,
+            responseMimeType: 'application/json'
+        }
+    };
+
+    try {
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            if (response.status === 400 || response.status === 403) {
+                throw new Error('Chave da API inválida ou modelo não disponível. Verifique sua configuração.');
+            }
+            throw new Error(`Erro na API do Gemini: ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        if (result.candidates && result.candidates[0]?.content?.parts[0]) {
+            const jsonText = result.candidates[0].content.parts[0].text;
+            currentProblem = JSON.parse(jsonText.replace(/```json|```/g, '').trim());
+            currentProblem.difficulty = difficulty;
+            currentProblem.source = 'gemini';
+            renderProblem(currentProblem);
+            apiKeyFeedback.textContent = 'Matriz gerada com sucesso!';
+            apiKeyFeedback.className = 'text-sm text-green-600 mt-2 font-medium';
+        } else {
+            throw new Error("Resposta inválida da API do Gemini.");
+        }
+    } catch (error) {
+        console.error("Erro ao chamar a API do Gemini:", error);
+        feedbackEl.textContent = error.message || "Erro ao gerar o desafio. Tente novamente.";
+        feedbackEl.className = 'text-center h-auto mb-4 text-lg font-semibold text-red-600';
+    } finally {
+        setLoading(false);
+    }
+}
+
+// --- UI and Game Flow Functions ---
+function setLoading(loading) {
+    isLoading = loading;
+    newMatrixBtn.disabled = loading;
+    if (loading) {
+        loaderContainer.classList.remove('hidden');
+        revealBtn.disabled = true;
+        optionsContainer.innerHTML = '';
+        matrixContainer.querySelectorAll('.matrix-cell, #target-cell').forEach(c => c.remove());
+        feedbackEl.textContent = '';
+    } else {
+        loaderContainer.classList.add('hidden');
+    }
+}
+
+function renderProblem(problemData) {
+    problemLocked = false;
+    feedbackEl.textContent = '';
+    explanationContainer.classList.add('hidden');
+    revealBtn.disabled = true;
+
+    // Clear previous cells
+    matrixContainer.querySelectorAll('.matrix-cell, #target-cell').forEach(c => c.remove());
+
+    problemData.matrix.forEach(shapeDef => {
+        const cell = document.createElement('div');
+        cell.className = 'matrix-cell bg-white/80 border-2 border-gray-300 rounded-xl flex items-center justify-center p-2 transition-all shadow-sm';
+        cell.appendChild(createSVGElement(shapeDef));
+        matrixContainer.appendChild(cell);
+    });
+
+    const placeholderCell = document.createElement('div');
+    placeholderCell.className = 'matrix-cell bg-white/60 border-2 border-dashed border-gray-400 rounded-xl flex items-center justify-center';
+    placeholderCell.id = 'target-cell';
+    placeholderCell.innerHTML = '<svg class="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
+    matrixContainer.appendChild(placeholderCell);
+
+    optionsContainer.innerHTML = '';
+    problemData.options.forEach((opt, index) => {
+        const cell = document.createElement('div');
+        cell.className = 'option-cell bg-white/80 border-2 border-gray-300 rounded-xl flex items-center justify-center cursor-pointer hover:bg-teal-50 hover:border-teal-500 p-2 transition-all shadow-sm';
+        cell.appendChild(createSVGElement(opt));
+        cell.dataset.id = index;
+        cell.addEventListener('click', handleOptionClick);
+        optionsContainer.appendChild(cell);
+    });
+}
+
+function handleOptionClick(event) {
+    if (problemLocked || isLoading) return;
+    problemLocked = true;
+    revealBtn.disabled = false;
+
+    const clickedCell = event.currentTarget;
+    const optionId = parseInt(clickedCell.dataset.id, 10);
+
+    const targetCell = document.getElementById('target-cell');
+    targetCell.innerHTML = '';
+    targetCell.appendChild(createSVGElement(currentProblem.options[currentProblem.correctAnswerIndex]));
+    targetCell.className = 'matrix-cell bg-white/80 border-2 border-gray-300 rounded-xl flex items-center justify-center p-2 transition-all';
+
+    if (optionId === currentProblem.correctAnswerIndex) {
+        feedbackEl.textContent = '✅ Correto!';
+        feedbackEl.className = 'text-center h-8 mb-4 text-lg font-semibold text-green-600';
+        clickedCell.classList.add('correct-answer');
+    } else {
+        feedbackEl.textContent = '❌ Incorreto';
+        feedbackEl.className = 'text-center h-8 mb-4 text-lg font-semibold text-red-600';
+        clickedCell.classList.add('incorrect-answer');
+        revealExplanation();
+    }
+}
+
+function revealExplanation() {
+    if (!currentProblem) return;
+
+    explanationText.textContent = currentProblem.explanation;
+
+    if (currentProblem.patterns && currentProblem.patterns.length > 0) {
+        patternsContainer.innerHTML = '<p class="text-sm font-semibold text-blue-900 mb-1">Padrões utilizados:</p><ul class="list-disc list-inside space-y-1">' +
+            currentProblem.patterns.map(p => `<li class="text-sm text-blue-800">${p}</li>`).join('') +
+            '</ul>';
+    }
+
+    sourceInfo.textContent = `Fonte: ${currentProblem.source === 'gemini' ? 'Gemini Pro' : 'Dataset local'} • Dificuldade: ${currentProblem.difficulty === 'difficult' ? 'Difícil' : 'Normal'}`;
+
+    explanationContainer.classList.remove('hidden');
+
+    const correctOptionEl = optionsContainer.querySelector(`[data-id='${currentProblem.correctAnswerIndex}']`);
+    if (correctOptionEl && !correctOptionEl.classList.contains('correct-answer')) {
+        correctOptionEl.classList.add('revealed-answer');
+    }
+}
+
+// --- Event Listeners ---
+newMatrixBtn.addEventListener('click', generateProblemWithGemini);
+revealBtn.addEventListener('click', revealExplanation);
+saveKeyBtn.addEventListener('click', saveApiKey);
+
+// --- Initial Load ---
+document.addEventListener('DOMContentLoaded', () => {
+    loadApiKey();
+    console.log('🧠 Cognitive Test Config loaded:', window.COGNITIVE_TEST_CONFIG);
+});
+</script>
+
+</body>
+</html>

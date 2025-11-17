@@ -1,7 +1,9 @@
 @import 'tailwindcss';
 
 @import './styles/theme.css';
+@import './styles/pwa-mobile.css';
 @import './index.css';
+@import './styles/compact-mode.css';
 @import "tw-animate-css";
 /*
   ---break---
@@ -36,6 +38,12 @@
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
+
+  /* PWA Safe Area Support for iOS notch */
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
@@ -183,5 +191,61 @@
 
   body {
     @apply bg-background text-foreground;
+    /* Add safe area padding for iOS */
+    padding-top: var(--safe-area-top);
+    padding-bottom: var(--safe-area-bottom);
+    padding-left: var(--safe-area-left);
+    padding-right: var(--safe-area-right);
+  }
+
+  /* Ensure touch targets are at least 48x48px for accessibility */
+  button,
+  a,
+  input[type="button"],
+  input[type="submit"],
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-height: 48px;
+    min-width: 48px;
+  }
+
+  /* Smaller touch targets for compact layouts can use this class */
+  .touch-target-compact button,
+  .touch-target-compact a {
+    min-height: 40px;
+    min-width: 40px;
+  }
+
+  /* Prevent pull-to-refresh on mobile browsers */
+  html,
+  body {
+    overscroll-behavior-y: contain;
+  }
+
+  /* Smooth scrolling for better UX */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Better tap highlighting for mobile */
+  * {
+    -webkit-tap-highlight-color: rgba(0, 173, 173, 0.1);
+  }
+
+  /* Offline indicator styles */
+  body.offline::before {
+    content: "Offline Mode";
+    position: fixed;
+    top: var(--safe-area-top, 0);
+    left: 0;
+    right: 0;
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: white;
+    text-align: center;
+    padding: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    z-index: 9999;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
   }
 }

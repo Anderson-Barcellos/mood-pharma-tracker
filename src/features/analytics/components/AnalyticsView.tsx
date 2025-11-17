@@ -4,6 +4,9 @@ import { format } from 'date-fns';
 import { Label } from '@/shared/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
+import { TimeframeSelector, type TimeframePeriod, getTimeframeDays, usePersistedTimeframe } from '@/shared/components/TimeframeSelector';
+import { DataExportImport } from '@/shared/components/DataExportImport';
+import { PasswordSettings } from '@/features/auth/components/PasswordSettings';
 import { calculateConcentration } from '@/features/analytics/utils/pharmacokinetics';
 import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from '@/shared/types';
 
@@ -16,7 +19,11 @@ interface AnalyticsViewProps {
 
 export default function AnalyticsView({ medications, doses, moodEntries, cognitiveTests }: AnalyticsViewProps) {
   const [selectedMedicationId, setSelectedMedicationId] = useState<string>('');
-  const [dayRange, setDayRange] = useState<number>(7);
+
+  // Use new TimeframeSelector
+  const initialTimeframe = usePersistedTimeframe('analytics-timeframe', '7d');
+  const [timeframe, setTimeframe] = useState<TimeframePeriod>(initialTimeframe);
+  const dayRange = getTimeframeDays(timeframe) ?? 7;
 
   const selectedMedication = medications.find(m => m.id === selectedMedicationId);
 
@@ -46,7 +53,7 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
       const dataPoint: any = {
         time,
         timestamp: time,
-        formattedTime: format(time, 'MMM d HH:mm')
+        formattedTime: time && Number.isFinite(time) ? format(time, 'MMM d HH:mm') : ''
       };
 
       const concentration = calculateConcentration(
@@ -64,9 +71,6 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
           (a, b) => Math.abs(a.timestamp - time) - Math.abs(b.timestamp - time)
         )[0];
         dataPoint.mood = closestMood.moodScore;
-        dataPoint.anxiety = closestMood.anxietyLevel;
-        dataPoint.energy = closestMood.energyLevel;
-        dataPoint.focus = closestMood.focusLevel;
       }
 
       const nearbyTests = cognitiveTests.filter(
@@ -144,20 +148,13 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
           </Select>
         </div>
 
-        <div className="w-full sm:w-48 space-y-2">
-          <Label htmlFor="range-select">Time Range</Label>
-          <Select value={dayRange.toString()} onValueChange={(v) => setDayRange(Number(v))}>
-            <SelectTrigger id="range-select">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="1">24 hours</SelectItem>
-              <SelectItem value="3">3 days</SelectItem>
-              <SelectItem value="7">7 days</SelectItem>
-              <SelectItem value="14">14 days</SelectItem>
-              <SelectItem value="30">30 days</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="w-full sm:w-48">
+          <TimeframeSelector
+            value={timeframe}
+            onChange={setTimeframe}
+            storageKey="analytics-timeframe"
+            showLabel={true}
+          />
         </div>
       </div>
 
@@ -232,11 +229,24 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
                     dot={false}
                     connectNulls
                   />
-                  <Scatter 
+                  <Scatter
                     yAxisId="outcomes"
                     dataKey="mood"
                     fill="hsl(var(--chart-2))"
-                    name="Mood Score"
+                    name="Mood Points"
+                  />
+                  <Line
+                    yAxisId="outcomes"
+                    type="natural"
+                    dataKey="mood"
+                    stroke="hsl(var(--chart-2))"
+                    strokeWidth={2.5}
+                    strokeOpacity={0.9}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    name="Mood Curve"
+                    dot={false}
+                    connectNulls
                   />
                   <Scatter 
                     yAxisId="outcomes"
@@ -258,6 +268,12 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
           </CardContent>
         </Card>
       )}
+
+      {/* Security & Data Management */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <PasswordSettings />
+        <DataExportImport />
+      </div>
     </div>
   );
 }

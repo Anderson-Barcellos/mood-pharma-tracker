@@ -348,6 +348,15 @@ class MoodPharmaDatabase extends Dexie {
           }
         });
       });
+
+    this.version(3)
+      .stores({
+        medications: 'id, name, category, createdAt, updatedAt',
+        doses: 'id, medicationId, timestamp, createdAt, [medicationId+timestamp]',
+        moodEntries: 'id, timestamp, createdAt, moodScore',
+        cognitiveTests: 'id, timestamp, createdAt, totalScore',
+        metadata: '&key, updatedAt'
+      });
   }
 }
 
@@ -405,13 +414,13 @@ function readLegacyFromStorage<T>(key: LegacyKey): T | undefined {
 function readLegacyFromGlobals<T>(key: LegacyKey): T | undefined {
   if (typeof window === 'undefined') return undefined;
   const globalCandidates = [
-    (window as Record<string, unknown>).__SPARK_KV_INITIAL_STATE__ as LegacyPayload,
-    (window as Record<string, unknown>).__SPARK_KV_CACHE__ as LegacyPayload,
-    (window as Record<string, unknown>).__SPARK_KV__ as LegacyPayload,
-    (window as Record<string, unknown>).__sparkKV__ as LegacyPayload,
-    (window as Record<string, unknown>).__sparkKv__ as LegacyPayload,
-    (window as Record<string, unknown>).sparkKvInitialState as LegacyPayload,
-    (window as Record<string, unknown>).sparkKvCache as LegacyPayload
+    (window as unknown as Record<string, unknown>).__SPARK_KV_INITIAL_STATE__ as LegacyPayload,
+    (window as unknown as Record<string, unknown>).__SPARK_KV_CACHE__ as LegacyPayload,
+    (window as unknown as Record<string, unknown>).__SPARK_KV__ as LegacyPayload,
+    (window as unknown as Record<string, unknown>).__sparkKV__ as LegacyPayload,
+    (window as unknown as Record<string, unknown>).__sparkKv__ as LegacyPayload,
+    (window as unknown as Record<string, unknown>).sparkKvInitialState as LegacyPayload,
+    (window as unknown as Record<string, unknown>).sparkKvCache as LegacyPayload
   ].filter((candidate): candidate is LegacyPayload => Boolean(candidate));
 
   for (const source of globalCandidates) {
@@ -450,25 +459,13 @@ async function loadLegacyState(): Promise<LegacyState> {
 }
 
 function ensureMedication(record: Medication): Medication {
-  const now = Date.now();
-  return {
-    absorptionRate: record.absorptionRate ?? 1,
-    createdAt: record.createdAt ?? now,
-    updatedAt: record.updatedAt ?? record.createdAt ?? now,
-    notes: record.notes,
-    therapeuticRange: record.therapeuticRange,
-    id: record.id,
-    name: record.name,
-    brandName: record.brandName,
-    category: record.category,
-    halfLife: record.halfLife,
-    volumeOfDistribution: record.volumeOfDistribution,
-    bioavailability: record.bioavailability
-  };
+  return normalizeMedicationRecord(record);
 }
 
 function ensureDose(record: MedicationDose): MedicationDose {
-  const timestamp = record.timestamp ?? Date.now();
+  let timestamp = normalizeTimestamp(record.timestamp);
+  let createdAt = normalizeTimestamp(record.createdAt, timestamp);
+  
   return {
     id: record.id,
     medicationId: record.medicationId,
@@ -476,12 +473,14 @@ function ensureDose(record: MedicationDose): MedicationDose {
     doseAmount: record.doseAmount,
     route: record.route,
     notes: record.notes,
-    createdAt: record.createdAt ?? timestamp
+    createdAt
   };
 }
 
 function ensureMoodEntry(record: MoodEntry): MoodEntry {
-  const timestamp = record.timestamp ?? Date.now();
+  let timestamp = normalizeTimestamp(record.timestamp);
+  let createdAt = normalizeTimestamp(record.createdAt, timestamp);
+  
   return {
     id: record.id,
     timestamp,
@@ -490,7 +489,7 @@ function ensureMoodEntry(record: MoodEntry): MoodEntry {
     energyLevel: record.energyLevel,
     focusLevel: record.focusLevel,
     notes: record.notes,
-    createdAt: record.createdAt ?? timestamp
+    createdAt
   };
 }
 
@@ -513,13 +512,11 @@ export async function migrateLegacyData(): Promise<void> {
   }
 
   try {
+    console.log('[MoodPharma DB] Opening database...');
     await db.open();
+    console.log('[MoodPharma DB] Database opened successfully');
 
-    const migrationFlag = await db.metadata.get(MIGRATION_FLAG_KEY);
-    if (migrationFlag?.value === true) {
-      return;
-    }
-
+    // First, check if database actually has data
     const [medicationsCount, dosesCount, moodCount, cognitiveCount] = await Promise.all([
       db.medications.count(),
       db.doses.count(),
@@ -527,7 +524,19 @@ export async function migrateLegacyData(): Promise<void> {
       db.cognitiveTests.count()
     ]);
 
-    if (medicationsCount + dosesCount + moodCount + cognitiveCount > 0) {
+    const totalCount = medicationsCount + dosesCount + moodCount + cognitiveCount;
+
+    console.log('[MoodPharma DB] Current counts:', {
+      medications: medicationsCount,
+      doses: dosesCount,
+      moodEntries: moodCount,
+      cognitiveTests: cognitiveCount,
+      total: totalCount
+    });
+
+    // If database has data, mark migration as complete and skip
+    if (totalCount > 0) {
+      console.log('[MoodPharma DB] ✅ Database has', totalCount, 'records, marking migration as complete');
       await db.metadata.put({
         key: MIGRATION_FLAG_KEY,
         value: true,
@@ -536,31 +545,57 @@ export async function migrateLegacyData(): Promise<void> {
       return;
     }
 
+    // Database is empty - check migration flag
+    const migrationFlag = await db.metadata.get(MIGRATION_FLAG_KEY);
+    console.log('[MoodPharma DB] Migration flag:', migrationFlag);
+
+    if (migrationFlag?.value === true) {
+      console.log('[MoodPharma DB] ⚠️ Migration flag is set but database is empty! Attempting migration anyway...');
+      // Don't return - continue to attempt migration
+    }
+
+    console.log('[MoodPharma DB] Database is empty, checking for legacy data...');
+
     const legacyState = await loadLegacyState();
     const operations: Promise<unknown>[] = [];
 
+    console.log('[MoodPharma DB] Legacy state found:', {
+      medications: Array.isArray(legacyState.medications) ? legacyState.medications.length : 0,
+      doses: Array.isArray(legacyState.doses) ? legacyState.doses.length : 0,
+      moodEntries: Array.isArray(legacyState.moodEntries) ? legacyState.moodEntries.length : 0,
+      cognitiveTests: Array.isArray(legacyState.cognitiveTests) ? legacyState.cognitiveTests.length : 0
+    });
+
     const legacyMedications = legacyState.medications;
     if (Array.isArray(legacyMedications) && legacyMedications.length > 0) {
+      console.log('[MoodPharma DB] Migrating', legacyMedications.length, 'medications');
       operations.push(db.medications.bulkPut(legacyMedications.map((record) => ensureMedication(record as Medication))));
     }
 
     const legacyDoses = legacyState.doses;
     if (Array.isArray(legacyDoses) && legacyDoses.length > 0) {
+      console.log('[MoodPharma DB] Migrating', legacyDoses.length, 'doses');
       operations.push(db.doses.bulkPut(legacyDoses.map((record) => ensureDose(record as MedicationDose))));
     }
 
     const legacyMood = legacyState.moodEntries;
     if (Array.isArray(legacyMood) && legacyMood.length > 0) {
+      console.log('[MoodPharma DB] Migrating', legacyMood.length, 'mood entries');
       operations.push(db.moodEntries.bulkPut(legacyMood.map((record) => ensureMoodEntry(record as MoodEntry))));
     }
 
     const legacyTests = legacyState.cognitiveTests;
     if (Array.isArray(legacyTests) && legacyTests.length > 0) {
+      console.log('[MoodPharma DB] Migrating', legacyTests.length, 'cognitive tests');
       operations.push(db.cognitiveTests.bulkPut(legacyTests.map((record) => ensureCognitiveTest(record as CognitiveTest))));
     }
 
     if (operations.length > 0) {
+      console.log('[MoodPharma DB] Running', operations.length, 'migration operations...');
       await Promise.all(operations);
+      console.log('[MoodPharma DB] Migration completed successfully!');
+    } else {
+      console.log('[MoodPharma DB] No legacy data found to migrate');
     }
 
     await db.metadata.put({
@@ -569,6 +604,6 @@ export async function migrateLegacyData(): Promise<void> {
       updatedAt: Date.now()
     });
   } catch (error) {
-    console.error('[dexie-migration] Failed to migrate legacy data', error);
+    console.error('[MoodPharma DB] ❌ Failed to migrate legacy data', error);
   }
 }

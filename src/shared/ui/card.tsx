@@ -1,19 +1,35 @@
-import { ComponentProps } from "react"
+import { ComponentProps, forwardRef } from "react"
 
 import { cn } from "@/shared/utils"
 
-function Card({ className, ...props }: ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="card"
-      className={cn(
-        "bg-card text-card-foreground flex flex-col gap-6 rounded-xl border py-6 shadow-sm",
-        className
-      )}
-      {...props}
-    />
-  )
+interface CardProps extends ComponentProps<"div"> {
+  /**
+   * Enable glass morphism styling
+   * @default false
+   */
+  glass?: boolean
 }
+
+const Card = forwardRef<HTMLDivElement, CardProps>(
+  ({ className, glass = false, ...props }, ref) => {
+    return (
+      <div
+        ref={ref}
+        data-slot="card"
+        className={cn(
+          "flex flex-col gap-6 rounded-xl border py-6 shadow-sm",
+          glass
+            ? "border-white/10 bg-white/60 backdrop-blur-md dark:border-white/5 dark:bg-neutral-900/40"
+            : "bg-card text-card-foreground",
+          className
+        )}
+        {...props}
+      />
+    )
+  }
+)
+
+Card.displayName = "Card"
 
 function CardHeader({ className, ...props }: ComponentProps<"div">) {
   return (

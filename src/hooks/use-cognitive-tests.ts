@@ -2,7 +2,8 @@ import { useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '@/core/database/db';
-import type { CognitiveTest } from '@/lib/types';
+import type { CognitiveTest } from '@/shared/types';
+import { scheduleServerSync } from '@/core/services/server-sync';
 
 interface CognitiveTestCreateInput extends Omit<CognitiveTest, 'id' | 'createdAt'> {
   id?: string;
@@ -34,15 +35,18 @@ export function useCognitiveTests() {
     };
 
     await db.cognitiveTests.put(record);
+    scheduleServerSync('cognitive:create');
     return record;
   }, []);
 
   const updateCognitiveTest = useCallback(async (id: string, updates: CognitiveTestUpdateInput) => {
-    await db.cognitiveTests.update(id, updates);
+    await db.cognitiveTests.update(id, updates as any);
+    scheduleServerSync('cognitive:update');
   }, []);
 
   const deleteCognitiveTest = useCallback(async (id: string) => {
     await db.cognitiveTests.delete(id);
+    scheduleServerSync('cognitive:delete');
   }, []);
 
   return {

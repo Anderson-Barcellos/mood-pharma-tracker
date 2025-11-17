@@ -1,0 +1,229 @@
+/**
+ * PWA Mobile Optimizations
+ * Additional styles for mobile touch and accessibility
+ */
+
+/* Touch target size helpers */
+.btn-touch {
+  min-height: 48px;
+  min-width: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1rem;
+}
+
+.btn-touch-sm {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0.5rem 0.75rem;
+}
+
+.btn-touch-lg {
+  min-height: 56px;
+  min-width: 56px;
+  padding: 1rem 1.5rem;
+}
+
+/* Icon-only buttons should still meet touch target size */
+button[aria-label]:not(:has(> span:not([class*="icon"]))),
+a[aria-label]:not(:has(> span:not([class*="icon"]))) {
+  min-height: 48px;
+  min-width: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Safe area utilities */
+.safe-top {
+  padding-top: calc(var(--safe-area-top) + 1rem);
+}
+
+.safe-bottom {
+  padding-bottom: calc(var(--safe-area-bottom) + 1rem);
+}
+
+.safe-left {
+  padding-left: calc(var(--safe-area-left) + 1rem);
+}
+
+.safe-right {
+  padding-right: calc(var(--safe-area-right) + 1rem);
+}
+
+/* Fixed bottom navigation with safe area */
+.nav-bottom-safe {
+  padding-bottom: var(--safe-area-bottom);
+}
+
+/* Prevent iOS bounce/overscroll on specific containers */
+.no-overscroll {
+  overscroll-behavior: contain;
+}
+
+.no-overscroll-y {
+  overscroll-behavior-y: contain;
+}
+
+.no-overscroll-x {
+  overscroll-behavior-x: contain;
+}
+
+/* Better scrolling on iOS */
+.ios-scroll {
+  -webkit-overflow-scrolling: touch;
+  overflow-y: auto;
+}
+
+/* Prevent text selection on tap (for buttons/interactive elements) */
+.no-select {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Active state feedback for mobile */
+.tap-feedback {
+  transition: transform 0.1s ease, opacity 0.1s ease;
+}
+
+.tap-feedback:active {
+  transform: scale(0.95);
+  opacity: 0.8;
+}
+
+/* Better focus indicators for keyboard navigation */
+@media (hover: none) and (pointer: coarse) {
+  /* Touch devices */
+  *:focus {
+    outline: 2px solid rgba(0, 173, 173, 0.5);
+    outline-offset: 2px;
+  }
+}
+
+/* Optimize font rendering on mobile */
+@media (max-width: 768px) {
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+}
+
+/* Landscape orientation adjustments for mobile */
+@media (max-width: 768px) and (orientation: landscape) {
+  .hide-landscape {
+    display: none !important;
+  }
+
+  .compact-landscape {
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+  }
+}
+
+/* Network status banner spacing adjustment */
+body.offline {
+  padding-top: calc(var(--safe-area-top) + 2.5rem) !important;
+}
+
+/* Pull-to-refresh prevention for specific containers */
+.prevent-pull-refresh {
+  overscroll-behavior-y: contain;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Haptic feedback class (requires JS to trigger) */
+.haptic-feedback {
+  /* Visual feedback */
+  transition: transform 0.05s ease;
+}
+
+.haptic-feedback:active {
+  transform: scale(0.98);
+}
+
+/* Optimize animations for performance on mobile */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Better contrast for outdoor/bright light usage */
+@media (prefers-contrast: high) {
+  :root {
+    --color-border: rgba(255, 255, 255, 0.3);
+  }
+
+  .dark {
+    --color-border: rgba(255, 255, 255, 0.2);
+  }
+}
+
+/* Loading states optimized for mobile */
+.skeleton-mobile {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 25%,
+    rgba(255, 255, 255, 0.1) 50%,
+    rgba(255, 255, 255, 0.05) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Bottom sheet/drawer adjustments for mobile */
+@media (max-width: 768px) {
+  [role="dialog"],
+  [role="alertdialog"] {
+    max-height: calc(100vh - var(--safe-area-top) - var(--safe-area-bottom));
+    max-height: calc(100dvh - var(--safe-area-top) - var(--safe-area-bottom));
+  }
+}
+
+/* Compact spacing for small screens */
+@media (max-width: 375px) {
+  .spacing-compact-mobile > * + * {
+    margin-top: 0.5rem !important;
+  }
+
+  .grid-compact-mobile {
+    gap: 0.5rem !important;
+  }
+}
+
+/* Ensure charts are responsive and touch-friendly */
+.chart-container {
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: pan-y;
+}
+
+/* Better modal/dialog positioning on mobile */
+@media (max-width: 768px) {
+  .modal-mobile-full {
+    position: fixed;
+    inset: 0;
+    margin: 0;
+    max-width: 100vw;
+    max-height: 100vh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+}

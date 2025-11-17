@@ -1,22 +1,77 @@
-# Logs
-logs
+# ■■■■■■■■■■■
+#  BUILD & DIST
+# ■■■■■■■■■■■
+dist/
+dist-ssr/
+*-dist/
+build/
+out/
+.next/
+.nuxt/
+.vite/
+
+# ■■■■■■■■■■■
+#  DEPENDENCIES
+# ■■■■■■■■■■■
+node_modules/
+.pnp/
+.pnp.js
+.yarn/
+# package-lock.json  # Keep this to ensure exact dependency versions
+yarn.lock
+pnpm-lock.yaml
+
+# ■■■■■■■■■■■
+#  LOGS & TEMPORARY FILES
+# ■■■■■■■■■■■
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
-
-node_modules
-dist
-dist-ssr
-*-dist
+vite-dev.log
 *.local
 
-# Editor directories and files
+# ■■■■■■■■■■■
+#  BACKUP & PROTOTYPES
+# ■■■■■■■■■■■
+backup/
+*.backup
+*.bak
+*.old
+
+# ■■■■■■■■■■■
+#  GENERATED DOCUMENTATION
+# ■■■■■■■■■■■
+GLASS_FILES_TREE.txt
+**/agent-eval-report*
+**/*.generated.*
+**/*.auto.*
+
+# ■■■■■■■■■■■
+#  ENVIRONMENT & SECRETS
+# ■■■■■■■■■■■
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+*.key
+*.pem
+*.crt
+secrets/
+
+# ■■■■■■■■■■■
+#  EDITOR & IDE
+# ■■■■■■■■■■■
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
+*.swp
+*.swo
+*.swn
 .DS_Store
 *.suo
 *.ntvs*
@@ -24,11 +79,42 @@ dist-ssr
 *.sln
 *.sw?
 
-.env
-**/agent-eval-report*
-packages
-pids
-.file-manifest
-.devcontainer/
+# ■■■■■■■■■■■
+#  DATABASE & DATA FILES
+# ■■■■■■■■■■■
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-shm
+*.db-wal
+data/
+*.data
 
+# ■■■■■■■■■■■
+#  CACHE & TEMP
+# ■■■■■■■■■■■
+.cache/
+.temp/
+tmp/
+*.cache
+*.tmp
+*.swp
+*.swo
+*~
+
+# ■■■■■■■■■■■
+#  MISCELLANEOUS
+# ■■■■■■■■■■■
+packages/
+pids/
+.file-manifest/
+.devcontainer/
 .spark-workbench-id
+clear-cache.html
+coverage/
+.nyc_output/
+*.tsbuildinfo
+
+# Archived old code
+archive/

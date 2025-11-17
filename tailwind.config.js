@@ -33,7 +33,48 @@ const defaultTheme = {
   },
   extend: {
     colors: {
+      // Design system color palette (Medical Mood Tracker)
+      primary: {
+        50: "var(--color-primary-50)",
+        100: "var(--color-primary-100)",
+        200: "var(--color-primary-200)",
+        300: "var(--color-primary-300)",
+        400: "var(--color-primary-400)",
+        500: "var(--color-primary-500)",
+        600: "var(--color-primary-600)",
+        700: "var(--color-primary-700)",
+        800: "var(--color-primary-800)",
+        900: "var(--color-primary-900)",
+        950: "var(--color-primary-950)",
+      },
+      secondary: {
+        50: "var(--color-secondary-50)",
+        100: "var(--color-secondary-100)",
+        200: "var(--color-secondary-200)",
+        300: "var(--color-secondary-300)",
+        400: "var(--color-secondary-400)",
+        500: "var(--color-secondary-500)",
+        600: "var(--color-secondary-600)",
+        700: "var(--color-secondary-700)",
+        800: "var(--color-secondary-800)",
+        900: "var(--color-secondary-900)",
+        950: "var(--color-secondary-950)",
+      },
       neutral: {
+        0: "var(--color-neutral-0)",
+        50: "var(--color-neutral-50)",
+        100: "var(--color-neutral-100)",
+        200: "var(--color-neutral-200)",
+        300: "var(--color-neutral-300)",
+        400: "var(--color-neutral-400)",
+        500: "var(--color-neutral-500)",
+        600: "var(--color-neutral-600)",
+        700: "var(--color-neutral-700)",
+        800: "var(--color-neutral-800)",
+        900: "var(--color-neutral-900)",
+        950: "var(--color-neutral-950)",
+        1000: "var(--color-neutral-1000)",
+        // Radix UI compatibility
         1: "var(--color-neutral-1)",
         2: "var(--color-neutral-2)",
         3: "var(--color-neutral-3)",
@@ -61,6 +102,18 @@ const defaultTheme = {
         contrast: "var(--color-neutral-contrast)",
       },
       accent: {
+        50: "var(--color-accent-50)",
+        100: "var(--color-accent-100)",
+        200: "var(--color-accent-200)",
+        300: "var(--color-accent-300)",
+        400: "var(--color-accent-400)",
+        500: "var(--color-accent-500)",
+        600: "var(--color-accent-600)",
+        700: "var(--color-accent-700)",
+        800: "var(--color-accent-800)",
+        900: "var(--color-accent-900)",
+        950: "var(--color-accent-950)",
+        // Radix UI compatibility
         1: "var(--color-accent-1)",
         2: "var(--color-accent-2)",
         3: "var(--color-accent-3)",
@@ -90,6 +143,40 @@ const defaultTheme = {
         12: "var(--color-accent-secondary-12)",
         contrast: "var(--color-accent-secondary-contrast)",
       },
+      // Semantic colors
+      success: {
+        50: "var(--color-success-50)",
+        100: "var(--color-success-100)",
+        500: "var(--color-success-500)",
+        600: "var(--color-success-600)",
+        700: "var(--color-success-700)",
+      },
+      warning: {
+        50: "var(--color-warning-50)",
+        100: "var(--color-warning-100)",
+        500: "var(--color-warning-500)",
+        600: "var(--color-warning-600)",
+        700: "var(--color-warning-700)",
+      },
+      error: {
+        50: "var(--color-error-50)",
+        100: "var(--color-error-100)",
+        500: "var(--color-error-500)",
+        600: "var(--color-error-600)",
+        700: "var(--color-error-700)",
+      },
+      info: {
+        50: "var(--color-info-50)",
+        100: "var(--color-info-100)",
+        500: "var(--color-info-500)",
+        600: "var(--color-info-600)",
+        700: "var(--color-info-700)",
+      },
+      // Semantic tokens
+      background: "var(--color-background)",
+      foreground: "var(--color-text-primary)",
+      surface: "var(--color-surface)",
+      border: "var(--color-border-default)",
       fg: {
         DEFAULT: "var(--color-fg)",
         secondary: "var(--color-fg-secondary)",
@@ -102,15 +189,181 @@ const defaultTheme = {
       "focus-ring": "var(--color-focus-ring)",
     },
     borderRadius: {
+      none: "var(--radius-none)",
       sm: "var(--radius-sm)",
+      base: "var(--radius-base)",
       md: "var(--radius-md)",
       lg: "var(--radius-lg)",
       xl: "var(--radius-xl)",
       "2xl": "var(--radius-2xl)",
+      "3xl": "var(--radius-3xl)",
       full: "var(--radius-full)",
+    },
+    boxShadow: {
+      // Glass shadows
+      "glass-sm": "var(--shadow-glass-sm)",
+      "glass-base": "var(--shadow-glass-base)",
+      "glass-md": "var(--shadow-glass-md)",
+      "glass-lg": "var(--shadow-glass-lg)",
+      "glass-xl": "var(--shadow-glass-xl)",
+      // Colored shadows
+      "primary": "var(--shadow-primary)",
+      "secondary": "var(--shadow-secondary)",
+      "accent": "var(--shadow-accent)",
+      // Inner shadows
+      "inner-sm": "var(--shadow-inner-sm)",
+      "inner-base": "var(--shadow-inner-base)",
+      "inner-md": "var(--shadow-inner-md)",
+    },
+    backdropBlur: {
+      none: "var(--blur-none)",
+      sm: "var(--blur-sm)",
+      base: "var(--blur-base)",
+      md: "var(--blur-md)",
+      lg: "var(--blur-lg)",
+      xl: "var(--blur-xl)",
+      "2xl": "var(--blur-2xl)",
+      "3xl": "var(--blur-3xl)",
+    },
+    fontFamily: {
+      sans: "var(--font-sans)".split(","),
+      display: "var(--font-display)".split(","),
+      mono: "var(--font-mono)".split(","),
+    },
+    fontSize: {
+      xs: ["var(--text-xs)", { lineHeight: "1.5" }],
+      sm: ["var(--text-sm)", { lineHeight: "1.5" }],
+      base: ["var(--text-base)", { lineHeight: "1.5" }],
+      lg: ["var(--text-lg)", { lineHeight: "1.5" }],
+      xl: ["var(--text-xl)", { lineHeight: "1.5" }],
+      "2xl": ["var(--text-2xl)", { lineHeight: "1.4" }],
+      "3xl": ["var(--text-3xl)", { lineHeight: "1.3" }],
+      "4xl": ["var(--text-4xl)", { lineHeight: "1.2" }],
+      "5xl": ["var(--text-5xl)", { lineHeight: "1.1" }],
+      "6xl": ["var(--text-6xl)", { lineHeight: "1" }],
+    },
+    transitionDuration: {
+      fast: "var(--transition-fast)",
+      base: "var(--transition-base)",
+      slow: "var(--transition-slow)",
+      slower: "var(--transition-slower)",
+    },
+    transitionTimingFunction: {
+      smooth: "var(--ease-smooth)",
+      spring: "var(--ease-spring)",
+      clinical: "var(--ease-clinical)",
+    },
+    zIndex: {
+      base: "var(--z-base)",
+      dropdown: "var(--z-dropdown)",
+      sticky: "var(--z-sticky)",
+      fixed: "var(--z-fixed)",
+      "modal-backdrop": "var(--z-modal-backdrop)",
+      modal: "var(--z-modal)",
+      popover: "var(--z-popover)",
+      tooltip: "var(--z-tooltip)",
+      toast: "var(--z-toast)",
+    },
+    keyframes: {
+      // Design system animations
+      "fade-in": {
+        "0%": { opacity: "0" },
+        "100%": { opacity: "1" },
+      },
+      "fade-out": {
+        "0%": { opacity: "1" },
+        "100%": { opacity: "0" },
+      },
+      "slide-up": {
+        "0%": { transform: "translateY(10px)", opacity: "0" },
+        "100%": { transform: "translateY(0)", opacity: "1" },
+      },
+      "slide-down": {
+        "0%": { transform: "translateY(-10px)", opacity: "0" },
+        "100%": { transform: "translateY(0)", opacity: "1" },
+      },
+      "slide-left": {
+        "0%": { transform: "translateX(10px)", opacity: "0" },
+        "100%": { transform: "translateX(0)", opacity: "1" },
+      },
+      "slide-right": {
+        "0%": { transform: "translateX(-10px)", opacity: "0" },
+        "100%": { transform: "translateX(0)", opacity: "1" },
+      },
+      "scale-up": {
+        "0%": { transform: "scale(0.95)", opacity: "0" },
+        "100%": { transform: "scale(1)", opacity: "1" },
+      },
+      "pulse-slow": {
+        "0%, 100%": { opacity: "1" },
+        "50%": { opacity: "0.7" },
+      },
+      "shimmer": {
+        "0%": { backgroundPosition: "-200% 0" },
+        "100%": { backgroundPosition: "200% 0" },
+      },
+      "glass-morph": {
+        "0%": { backdropFilter: "blur(8px)", opacity: "0" },
+        "100%": { backdropFilter: "blur(16px)", opacity: "1" },
+      },
+      // Existing gradient animations
+      "gradient-slow": {
+        "0%, 100%": { backgroundPosition: "0% 50%" },
+        "50%": { backgroundPosition: "100% 50%" },
+      },
+      "gradient-medium": {
+        "0%, 100%": { backgroundPosition: "0% 50%" },
+        "50%": { backgroundPosition: "100% 50%" },
+      },
+      "gradient-fast": {
+        "0%, 100%": { backgroundPosition: "0% 50%" },
+        "50%": { backgroundPosition: "100% 50%" },
+      },
+      "float-slow": {
+        "0%, 100%": { transform: "translate(0, 0) scale(1)" },
+        "33%": { transform: "translate(30px, -30px) scale(1.05)" },
+        "66%": { transform: "translate(-20px, 20px) scale(0.95)" },
+      },
+      "float-medium": {
+        "0%, 100%": { transform: "translate(0, 0) rotate(0deg)" },
+        "33%": { transform: "translate(-25px, 25px) rotate(3deg)" },
+        "66%": { transform: "translate(25px, -15px) rotate(-3deg)" },
+      },
+      "float-fast": {
+        "0%, 100%": { transform: "translate(0, 0) scale(1) rotate(0deg)" },
+        "50%": { transform: "translate(20px, -20px) scale(1.1) rotate(5deg)" },
+      },
+    },
+    animation: {
+      // Design system animations
+      "fade-in": "fade-in var(--transition-base) var(--ease-smooth)",
+      "fade-out": "fade-out var(--transition-base) var(--ease-smooth)",
+      "slide-up": "slide-up var(--transition-base) var(--ease-smooth)",
+      "slide-down": "slide-down var(--transition-base) var(--ease-smooth)",
+      "slide-left": "slide-left var(--transition-base) var(--ease-smooth)",
+      "slide-right": "slide-right var(--transition-base) var(--ease-smooth)",
+      "scale-up": "scale-up var(--transition-base) var(--ease-smooth)",
+      "pulse-slow": "pulse-slow 2s var(--ease-smooth) infinite",
+      "shimmer": "shimmer 2s linear infinite",
+      "glass-morph": "glass-morph var(--transition-slow) var(--ease-smooth)",
+      // Existing animations
+      "gradient-slow": "gradient-slow 15s ease infinite",
+      "gradient-medium": "gradient-medium 10s ease infinite",
+      "gradient-fast": "gradient-fast 6s ease infinite",
+      "float-slow": "float-slow 20s ease-in-out infinite",
+      "float-medium": "float-medium 15s ease-in-out infinite",
+      "float-fast": "float-fast 10s ease-in-out infinite",
+    },
+    backgroundSize: {
+      "200": "200% 200%",
+      "300": "300% 300%",
+    },
+    spacing: {
+      safe: "env(safe-area-inset-bottom)",
     },
   },
   spacing: {
+    safe: "env(safe-area-inset-bottom)",
     px: "var(--size-px)",
     0: "var(--size-0)",
     0.5: "var(--size-0-5)",
@@ -147,7 +400,7 @@ const defaultTheme = {
     80: "var(--size-80)",
     96: "var(--size-96)",
   },
-  darkMode: ["selector", '[data-appearance="dark"]'],
+  darkMode: ["class", '[data-theme="dark"]', '[data-appearance="dark"]'],
 }
 
 export default {

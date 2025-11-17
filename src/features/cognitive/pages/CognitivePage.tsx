@@ -1,5 +1,5 @@
-import CognitiveView from '@/features/cognitive/components/CognitiveView';
+import CognitiveBasicView from '@/features/cognitive/components/CognitiveBasicView';
 
 export default function CognitivePage() {
-  return <CognitiveView />;
+  return <CognitiveBasicView />;
 }

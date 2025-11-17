@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MoodPharma DB Debug Console</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            max-width: 1000px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        h1 {
+            color: #00adad;
+        }
+        button {
+            background: #00adad;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-family: inherit;
+        }
+        button:hover {
+            background: #008989;
+        }
+        button.danger {
+            background: #dc3545;
+        }
+        button.danger:hover {
+            background: #c82333;
+        }
+        .output {
+            background: #252526;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+            border: 1px solid #3e3e42;
+            white-space: pre-wrap;
+            font-size: 13px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .success { color: #4ec9b0; }
+        .error { color: #f48771; }
+        .warning { color: #dcdcaa; }
+        .info { color: #569cd6; }
+    </style>
+</head>
+<body>
+    <h1>🔧 MoodPharma DB Debug Console</h1>
+
+    <div>
+        <button onclick="checkDB()">📊 Check DB Status</button>
+        <button onclick="listAllData()">📋 List All Data</button>
+        <button onclick="checkLocalStorage()">💾 Check LocalStorage</button>
+        <button onclick="resetMigrationFlag()" class="danger">🔄 Reset Migration Flag</button>
+        <button onclick="clearConsole()">🧹 Clear Console</button>
+    </div>
+
+    <div id="output" class="output">Console output will appear here...</div>
+
+    <script src="https://cdn.jsdelivr.net/npm/dexie@latest/dist/dexie.min.js"></script>
+    <script>
+        const output = document.getElementById('output');
+
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const span = document.createElement('span');
+            span.className = type;
+            span.textContent = `[${timestamp}] ${message}\n`;
+            output.appendChild(span);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function clearConsole() {
+            output.innerHTML = '';
+        }
+
+        // Database setup
+        const db = new Dexie('MoodPharmaTrackerDB');
+        db.version(1).stores({
+            medications: 'id, name, category, createdAt, updatedAt',
+            doses: 'id, medicationId, timestamp, createdAt',
+            moodEntries: 'id, timestamp, createdAt',
+            cognitiveTests: 'id, timestamp, createdAt'
+        });
+        db.version(2).stores({
+            medications: 'id, name, category, createdAt, updatedAt',
+            doses: 'id, medicationId, timestamp, createdAt',
+            moodEntries: 'id, timestamp, createdAt, moodScore',
+            cognitiveTests: 'id, timestamp, createdAt, totalScore',
+            metadata: '&key, updatedAt'
+        });
+        db.version(3).stores({
+            medications: 'id, name, category, createdAt, updatedAt',
+            doses: 'id, medicationId, timestamp, createdAt, [medicationId+timestamp]',
+            moodEntries: 'id, timestamp, createdAt, moodScore',
+            cognitiveTests: 'id, timestamp, createdAt, totalScore',
+            metadata: '&key, updatedAt'
+        });
+
+        async function checkDB() {
+            try {
+                log('Opening database...', 'info');
+                await db.open();
+                log('✅ Database opened successfully', 'success');
+
+                const [medications, doses, moodEntries, cognitiveTests] = await Promise.all([
+                    db.medications.count(),
+                    db.doses.count(),
+                    db.moodEntries.count(),
+                    db.cognitiveTests.count()
+                ]);
+
+                log('─'.repeat(60), 'info');
+                log('📊 DATABASE COUNTS:', 'info');
+                log(`  Medications: ${medications}`, medications > 0 ? 'success' : 'warning');
+                log(`  Doses: ${doses}`, doses > 0 ? 'success' : 'warning');
+                log(`  Mood Entries: ${moodEntries}`, moodEntries > 0 ? 'success' : 'warning');
+                log(`  Cognitive Tests: ${cognitiveTests}`, cognitiveTests > 0 ? 'success' : 'warning');
+                log(`  TOTAL: ${medications + doses + moodEntries + cognitiveTests}`, 'info');
+                log('─'.repeat(60), 'info');
+
+                // Check migration flag
+                const migrationFlag = await db.metadata.get('legacyKvMigration');
+                log('🏁 Migration Flag:', 'info');
+                log(JSON.stringify(migrationFlag, null, 2), migrationFlag?.value ? 'success' : 'warning');
+
+            } catch (error) {
+                log('❌ Error: ' + error.message, 'error');
+                console.error(error);
+            }
+        }
+
+        async function listAllData() {
+            try {
+                await db.open();
+                log('─'.repeat(60), 'info');
+                log('📋 LISTING ALL DATA:', 'info');
+
+                const medications = await db.medications.toArray();
+                log(`\n💊 MEDICATIONS (${medications.length}):`, 'success');
+                medications.forEach(med => {
+                    log(`  - ${med.name} (${med.category})`, 'info');
+                });
+
+                const doses = await db.doses.toArray();
+                log(`\n💉 DOSES (${doses.length}):`, 'success');
+                doses.slice(0, 5).forEach(dose => {
+                    log(`  - Med: ${dose.medicationId}, Time: ${new Date(dose.timestamp).toLocaleString()}`, 'info');
+                });
+                if (doses.length > 5) log(`  ... and ${doses.length - 5} more`, 'info');
+
+                const moods = await db.moodEntries.toArray();
+                log(`\n😊 MOOD ENTRIES (${moods.length}):`, 'success');
+                moods.slice(0, 5).forEach(mood => {
+                    log(`  - Score: ${mood.moodScore}, Time: ${new Date(mood.timestamp).toLocaleString()}`, 'info');
+                });
+                if (moods.length > 5) log(`  ... and ${moods.length - 5} more`, 'info');
+
+                const tests = await db.cognitiveTests.toArray();
+                log(`\n🧠 COGNITIVE TESTS (${tests.length}):`, 'success');
+                tests.slice(0, 5).forEach(test => {
+                    log(`  - Score: ${test.totalScore}, Time: ${new Date(test.timestamp).toLocaleString()}`, 'info');
+                });
+                if (tests.length > 5) log(`  ... and ${tests.length - 5} more`, 'info');
+
+                log('─'.repeat(60), 'info');
+            } catch (error) {
+                log('❌ Error: ' + error.message, 'error');
+                console.error(error);
+            }
+        }
+
+        async function checkLocalStorage() {
+            log('─'.repeat(60), 'info');
+            log('💾 CHECKING LOCALSTORAGE FOR LEGACY DATA:', 'info');
+
+            const keys = [
+                'medications', 'doses', 'moodEntries', 'cognitiveTests',
+                'spark-kv:medications', 'spark-kv:doses', 'spark-kv:moodEntries', 'spark-kv:cognitiveTests'
+            ];
+
+            let foundAny = false;
+            for (const key of keys) {
+                const value = localStorage.getItem(key);
+                if (value) {
+                    foundAny = true;
+                    try {
+                        const parsed = JSON.parse(value);
+                        const count = Array.isArray(parsed) ? parsed.length : 'N/A';
+                        log(`✅ Found: ${key} (${count} items)`, 'success');
+                    } catch {
+                        log(`⚠️ Found: ${key} (not parseable)`, 'warning');
+                    }
+                }
+            }
+
+            if (!foundAny) {
+                log('⚠️ No legacy data found in LocalStorage', 'warning');
+            }
+
+            log('─'.repeat(60), 'info');
+        }
+
+        async function resetMigrationFlag() {
+            if (!confirm('⚠️ This will reset the migration flag and allow re-migration. Continue?')) {
+                return;
+            }
+
+            try {
+                await db.open();
+                await db.metadata.delete('legacyKvMigration');
+                log('✅ Migration flag reset! Reload the app to trigger re-migration.', 'success');
+            } catch (error) {
+                log('❌ Error resetting flag: ' + error.message, 'error');
+            }
+        }
+
+        // Auto-run on load
+        checkDB();
+    </script>
+</body>
+</html>

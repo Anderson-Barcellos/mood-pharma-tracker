@@ -11,7 +11,6 @@ import { Textarea } from '@/shared/ui/textarea';
 import { Badge } from '@/shared/ui/badge';
 import { Plus, Pill, Pencil, Trash, ClockCounterClockwise } from '@phosphor-icons/react';
 import type { Medication, MedicationCategory, MedicationDose } from '@/shared/types';
-import { v4 as uuidv4 } from 'uuid';
 import MedicationDosesView from '@/features/doses/components/MedicationDosesView';
 
 const MEDICATION_CATEGORIES: MedicationCategory[] = [
@@ -269,56 +268,63 @@ export default function MedicationsView() {
                       {med.brandName && (
                         <CardDescription className="text-xs">{med.brandName}</CardDescription>
                       )}
+                      <Badge variant="outline">{med.category}</Badge>
                     </div>
                   </div>
-                  <Badge variant="outline">{med.category}</Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Half-life:</span>
-                    <span className="font-medium">{med.halfLife}h</span>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Half-life:</span>
+                      <span className="font-medium">{med.halfLife ? `${med.halfLife}h` : '—'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Vd:</span>
+                      <span className="font-medium">{med.volumeOfDistribution ? `${med.volumeOfDistribution} L/kg` : '—'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Bioavailability:</span>
+                      <span className="font-medium">{med.bioavailability ? `${(med.bioavailability * 100).toFixed(0)}%` : '—'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Absorption:</span>
+                      <span className="font-medium">{med.absorptionRate ? `${med.absorptionRate}/h` : '—'}</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Vd:</span>
-                    <span className="font-medium">{med.volumeOfDistribution} L/kg</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Bioavailability:</span>
-                    <span className="font-medium">{(med.bioavailability * 100).toFixed(0)}%</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Absorption:</span>
-                    <span className="font-medium">{med.absorptionRate}/h</span>
-                  </div>
-                </div>
-                {med.notes && (
-                  <p className="text-xs text-muted-foreground mt-3 pt-3 border-t">{med.notes}</p>
-                )}
-              </CardContent>
-              <CardFooter className="flex flex-col gap-2">
-                <Button 
-                  variant="secondary" 
-                  size="sm" 
-                  className="w-full" 
-                  onClick={() => handleViewDoses(med)}
-                >
-                  <ClockCounterClockwise className="w-4 h-4 mr-2" />
-                  View Doses ({getDoseCount(med.id)})
-                </Button>
-                <div className="flex gap-2 w-full">
-                  <Button variant="outline" size="sm" className="flex-1" onClick={() => openEditDialog(med)}>
-                    <Pencil className="w-4 h-4 mr-2" />
-                    Edit
+                  {!hasPkParams && (
+                    <div className="mt-3 pt-3 border-t">
+                      <p className="text-xs text-destructive">
+                        ⚠️ Parâmetros farmacocinéticos incompletos. Gráficos não serão exibidos até você completar os dados.
+                      </p>
+                    </div>
+                  )}
+                  {med.notes && (
+                    <p className="text-xs text-muted-foreground mt-3 pt-3 border-t">{med.notes}</p>
+                  )}
+                </CardContent>
+                <CardFooter className="flex flex-col gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => handleViewDoses(med)}
+                  >
+                    <ClockCounterClockwise className="w-4 h-4 mr-2" />
+                    View Doses ({getDoseCount(med.id)})
                   </Button>
-                  <Button variant="destructive" size="sm" onClick={() => handleDelete(med.id)}>
-                    <Trash className="w-4 h-4" />
-                  </Button>
-                </div>
-              </CardFooter>
-            </Card>
-          ))}
+                  <div className="flex gap-2 w-full">
+                    <Button variant="outline" size="sm" className="flex-1" onClick={() => openEditDialog(med)}>
+                      <Pencil className="w-4 h-4 mr-2" />
+                      Edit
+                    </Button>
+                    <Button variant="destructive" size="sm" onClick={() => handleDelete(med.id)}>
+                      <Trash className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </CardFooter>
+              </Card>
+            );
+          })}
         </div>
       )}
 

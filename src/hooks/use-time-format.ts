@@ -7,28 +7,48 @@ export function useTimeFormat(timeframe: TimeframeType = 'days', dayRange: numbe
   const isMobile = useIsMobile();
 
   const formatXAxis = (timestamp: number): string => {
-    if (timeframe === 'hours') {
-      return format(timestamp, 'HH:mm');
+    // Validate timestamp to prevent "Invalid time value" errors
+    if (!timestamp || !Number.isFinite(timestamp) || timestamp < 0) {
+      return '';
     }
-    
-    if (isMobile) {
-      return format(timestamp, dayRange <= 3 ? 'HH:mm' : 'MMM d');
-    }
-    
-    if (dayRange <= 2) {
-      return format(timestamp, 'MMM d, HH:mm');
-    } else if (dayRange <= 14) {
-      return format(timestamp, 'MMM d');
-    } else {
-      return format(timestamp, 'MMM d');
+
+    try {
+      if (timeframe === 'hours') {
+        return format(timestamp, 'HH:mm');
+      }
+
+      if (isMobile) {
+        return format(timestamp, dayRange <= 3 ? 'HH:mm' : 'MMM d');
+      }
+
+      if (dayRange <= 2) {
+        return format(timestamp, 'MMM d, HH:mm');
+      } else if (dayRange <= 14) {
+        return format(timestamp, 'MMM d');
+      } else {
+        return format(timestamp, 'MMM d');
+      }
+    } catch (error) {
+      console.warn('Invalid timestamp for formatting:', timestamp, error);
+      return '';
     }
   };
 
   const formatTooltip = (timestamp: number): string => {
-    if (timeframe === 'hours' || dayRange <= 3) {
-      return format(timestamp, 'MMM d, yyyy HH:mm');
+    // Validate timestamp to prevent "Invalid time value" errors
+    if (!timestamp || !Number.isFinite(timestamp) || timestamp < 0) {
+      return '';
     }
-    return format(timestamp, 'MMM d, yyyy HH:mm');
+
+    try {
+      if (timeframe === 'hours' || dayRange <= 3) {
+        return format(timestamp, 'MMM d, yyyy HH:mm');
+      }
+      return format(timestamp, 'MMM d, yyyy HH:mm');
+    } catch (error) {
+      console.warn('Invalid timestamp for tooltip formatting:', timestamp, error);
+      return '';
+    }
   };
 
   const getXAxisInterval = (dataLength: number): number => {

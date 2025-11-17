@@ -2,7 +2,12 @@ export interface Medication {
   id: string;
   name: string;
   brandName?: string;
-  category: string;
+  genericName?: string; // Generic name (e.g., "Lisdexanfetamina")
+  category?: string; // Category (legacy field)
+  class?: string; // Medication class (alternative to category)
+  defaultDose?: number; // Default dose amount
+  unit?: string; // Dose unit (mg, mcg, etc.)
+  color?: string; // UI color for visual identification
   halfLife: number;
   volumeOfDistribution: number;
   bioavailability: number;
@@ -12,6 +17,9 @@ export interface Medication {
     max: number;
     unit: string;
   };
+  therapeuticRangeMin?: number; // Alternative therapeutic range format
+  therapeuticRangeMax?: number;
+  therapeuticRangeUnit?: string;
   notes?: string;
   createdAt: number;
   updatedAt: number;

@@ -3,17 +3,145 @@
 
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+
+    <!-- PWA Configuration -->
+    <meta name="theme-color" content="#00adad" />
+    <meta name="description" content="Personal therapeutic monitoring for mood, medications, and cognitive function" />
+
+    <!-- Apple iOS PWA Support -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="MoodPharma" />
+    <link rel="apple-touch-icon" href="/icons/icon-192x192.svg" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.svg" />
+    <link rel="apple-touch-icon" sizes="512x512" href="/icons/icon-512x512.svg" />
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/icons/icon-192x192.svg" />
+
+    <!-- Microsoft Tiles -->
+    <meta name="msapplication-TileColor" content="#00adad" />
+    <meta name="msapplication-TileImage" content="/icons/icon-144x144.svg" />
+    <meta name="msapplication-config" content="none" />
+
+    <!-- Open Graph / Social Media -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Mood & Pharma Tracker" />
+    <meta property="og:description" content="Personal therapeutic monitoring for mood, medications, and cognitive function" />
+    <meta property="og:image" content="/icons/icon-512x512.svg" />
+
+    <!-- Security Headers -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+
     <title>Mood & Pharma Tracker</title>
+
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter&family=Lora&family=JetBrains+Mono&display=swap">
+
+    <!-- Styles -->
     <link href="/src/main.css" rel="stylesheet" />
 </head>
 
 <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+
+    <!-- Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker
+                    .register('/service-worker.js')
+                    .then((registration) => {
+                        console.log('✅ Service Worker registered:', registration.scope);
+
+                        // Check for updates every hour
+                        setInterval(() => {
+                            registration.update();
+                        }, 60 * 60 * 1000);
+
+                        // Listen for waiting service worker
+                        registration.addEventListener('updatefound', () => {
+                            const newWorker = registration.installing;
+                            if (newWorker) {
+                                newWorker.addEventListener('statechange', () => {
+                                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                        // New service worker available
+                                        console.log('🔄 New version available!');
+
+                                        // Notify user (you can show a toast/banner here)
+                                        if (window.confirm('New version available! Reload to update?')) {
+                                            newWorker.postMessage({ type: 'SKIP_WAITING' });
+                                            window.location.reload();
+                                        }
+                                    }
+                                });
+                            }
+                        });
+                    })
+                    .catch((error) => {
+                        console.error('❌ Service Worker registration failed:', error);
+                    });
+
+                // Handle service worker updates
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    console.log('🔄 Service Worker updated, reloading...');
+                    window.location.reload();
+                });
+            });
+        }
+
+        // PWA Install Prompt Handler
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            // Prevent Chrome <= 67 from automatically showing the prompt
+            e.preventDefault();
+            // Stash the event so it can be triggered later
+            deferredPrompt = e;
+            console.log('💾 PWA install prompt available');
+
+            // Trigger custom install UI (handled by React component)
+            window.dispatchEvent(new CustomEvent('pwa-installable', { detail: deferredPrompt }));
+        });
+
+        // Track install success
+        window.addEventListener('appinstalled', () => {
+            console.log('✅ PWA installed successfully');
+            deferredPrompt = null;
+        });
+
+        // Network status monitoring
+        window.addEventListener('online', () => {
+            console.log('🌐 Back online');
+            document.body.classList.remove('offline');
+        });
+
+        window.addEventListener('offline', () => {
+            console.log('📡 Offline mode');
+            document.body.classList.add('offline');
+        });
+
+        // Add safe area CSS variables for iOS notch
+        const setCSSVariables = () => {
+            const root = document.documentElement;
+            const safeAreaTop = getComputedStyle(root).getPropertyValue('--sat') ||
+                               getComputedStyle(root).getPropertyValue('env(safe-area-inset-top)') || '0px';
+            const safeAreaBottom = getComputedStyle(root).getPropertyValue('--sab') ||
+                                  getComputedStyle(root).getPropertyValue('env(safe-area-inset-bottom)') || '0px';
+
+            root.style.setProperty('--safe-area-top', safeAreaTop);
+            root.style.setProperty('--safe-area-bottom', safeAreaBottom);
+        };
+
+        window.addEventListener('load', setCSSVariables);
+        window.addEventListener('resize', setCSSVariables);
+    </script>
 </body>
 
 </html>

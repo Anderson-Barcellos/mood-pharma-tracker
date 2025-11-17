@@ -1,8 +1,11 @@
 import { useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useQueryClient } from '@tanstack/react-query';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '@/core/database/db';
-import type { MedicationDose } from '@/lib/types';
+import type { MedicationDose } from '@/shared/types';
+import { pkCache } from '@/features/analytics/utils/pharmacokinetics-cache';
+import { scheduleServerSync } from '@/core/services/server-sync';
 
 interface DoseCreateInput extends Omit<MedicationDose, 'id' | 'createdAt'> {
   id?: string;
@@ -14,6 +17,8 @@ interface DoseUpdateInput extends Partial<Omit<MedicationDose, 'id' | 'createdAt
 }
 
 export function useDoses(medicationId?: string) {
+  const queryClient = useQueryClient();
+
   const queryResult = useLiveQuery(
     async () => {
       if (medicationId) {
@@ -29,6 +34,24 @@ export function useDoses(medicationId?: string) {
 
   const doses = queryResult ?? [];
 
+  const invalidateCache = useCallback((medId: string) => {
+    pkCache.invalidate(medId);
+    queryClient.invalidateQueries({
+      queryKey: ['concentration-curve'],
+      predicate: (query) => {
+        const key = query.queryKey;
+        return Array.isArray(key) && key[1] === medId;
+      }
+    });
+    queryClient.invalidateQueries({
+      queryKey: ['concentration-point'],
+      predicate: (query) => {
+        const key = query.queryKey;
+        return Array.isArray(key) && key[1] === medId;
+      }
+    });
+  }, [queryClient]);
+
   const createDose = useCallback(async (payload: DoseCreateInput) => {
     const timestamp = payload.timestamp ?? Date.now();
     const record: MedicationDose = {
@@ -42,16 +65,29 @@ export function useDoses(medicationId?: string) {
     };
 
     await db.doses.put(record);
+    invalidateCache(payload.medicationId);
+    scheduleServerSync('dose:create');
+
     return record;
-  }, []);
+  }, [invalidateCache]);
 
   const updateDose = useCallback(async (id: string, updates: DoseUpdateInput) => {
-    await db.doses.update(id, updates);
-  }, []);
+    const dose = await db.doses.get(id);
+    if (dose) {
+      await db.doses.update(id, updates);
+      invalidateCache(dose.medicationId);
+      scheduleServerSync('dose:update');
+    }
+  }, [invalidateCache]);
 
   const deleteDose = useCallback(async (id: string) => {
-    await db.doses.delete(id);
-  }, []);
+    const dose = await db.doses.get(id);
+    if (dose) {
+      await db.doses.delete(id);
+      invalidateCache(dose.medicationId);
+      scheduleServerSync('dose:delete');
+    }
+  }, [invalidateCache]);
 
   return {
     doses,

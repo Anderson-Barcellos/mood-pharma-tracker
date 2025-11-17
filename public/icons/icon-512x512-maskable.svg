@@ -1,0 +1,16 @@
+<svg width="512" height="512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bg-maskable-512">
+      <stop offset="0%" style="stop-color:#00adad;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#008a8a;stop-opacity:1" />
+    </radialGradient>
+  </defs>
+  <!-- Full bleed for maskable -->
+  <rect width="512" height="512" fill="url(#bg-maskable-512)"/>
+  <!-- Safe zone content (20% padding) -->
+  <circle cx="256" cy="256" r="133" fill="rgba(255, 255, 255, 0.15)"/>
+  <path d="M 136 256 L 187 256 L 205 205 L 256 307 L 307 205 L 325 256 L 376 256"
+        stroke="white" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <circle cx="256" cy="333" r="40" fill="white"/>
+  <line x1="216" y1="333" x2="296" y2="333" stroke="#00adad" stroke-width="6.5"/>
+</svg>
