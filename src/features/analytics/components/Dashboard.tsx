@@ -6,6 +6,11 @@ import type { NavigationTab } from '@/shared/layouts/AppLayout';
 import DoseLogger from '@/features/doses/components/DoseLogger';
 import QuickMoodLog from '@/features/mood/components/QuickMoodLog';
 import ConcentrationChart from './ConcentrationChart';
+import CorrelationInsights from './CorrelationInsights';
+import HealthScoreTrend from './HealthScoreTrend';
+import AdherenceMetrics from './AdherenceMetrics';
+import TherapeuticCompliance from './TherapeuticCompliance';
+import TimeToEffect from './TimeToEffect';
 
 interface DashboardProps {
   medications: Medication[];
@@ -89,6 +94,36 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
           doses={doses}
           moodEntries={moodEntries}
         />
+      )}
+
+      {/* Analytics Components */}
+      {medications.length > 0 && (
+        <>
+          {/* Row 1: Correlation Insights and Health Score Trend */}
+          <div className="grid gap-4 md:grid-cols-2">
+            <CorrelationInsights limit={3} />
+            <HealthScoreTrend />
+          </div>
+
+          {/* Row 2: Adherence Metrics */}
+          <AdherenceMetrics
+            medications={medications}
+            doses={doses}
+          />
+
+          {/* Row 3: Therapeutic Compliance and Time to Effect */}
+          <div className="grid gap-4 md:grid-cols-2">
+            <TherapeuticCompliance
+              medications={medications}
+              doses={doses}
+            />
+            <TimeToEffect
+              medications={medications}
+              doses={doses}
+              moodEntries={moodEntries}
+            />
+          </div>
+        </>
       )}
 
       <div className="grid gap-4 md:grid-cols-2">
