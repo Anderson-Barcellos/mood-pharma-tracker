@@ -71,9 +71,6 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
           (a, b) => Math.abs(a.timestamp - time) - Math.abs(b.timestamp - time)
         )[0];
         dataPoint.mood = closestMood.moodScore;
-        dataPoint.anxiety = closestMood.anxietyLevel;
-        dataPoint.energy = closestMood.energyLevel;
-        dataPoint.focus = closestMood.focusLevel;
       }
 
       const nearbyTests = cognitiveTests.filter(

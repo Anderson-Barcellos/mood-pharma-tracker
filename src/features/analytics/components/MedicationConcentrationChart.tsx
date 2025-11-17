@@ -18,6 +18,7 @@ import { Download, ArrowsOut } from '@phosphor-icons/react';
 import type { Medication, MedicationDose, MoodEntry } from '@/shared/types';
 import { useConcentrationCurve } from '@/features/analytics/hooks/use-concentration-data';
 import { useTimeFormat } from '@/features/analytics/hooks/use-time-format';
+import { useHeartRateChartData } from '@/hooks/use-health-data';
 
 interface MedicationConcentrationChartProps {
   medication: Medication;
@@ -30,6 +31,7 @@ interface MedicationConcentrationChartProps {
 }
 
 const MOOD_COLOR = '#22c55e'; // green
+const HEART_RATE_COLOR = '#ef4444'; // red
 
 type ChartMouseEvent = {
   activeLabel?: number | string;
@@ -117,16 +119,13 @@ export default function MedicationConcentrationChart({
       .map(entry => ({
         timestamp: entry.timestamp,
         mood: entry.moodScore,
-        anxiety: entry.anxietyLevel,
-        energy: entry.energyLevel,
-        focus: entry.focusLevel,
       }));
 
     // Agregar por dia quando o range for maior que 48h
     const aggregateByDay = timeRangeHours > 48;
     if (!aggregateByDay) return withinRange;
 
-    const buckets: Record<number, { ts: number; count: number; mood: number; anxiety?: number; energy?: number; focus?: number }>
+    const buckets: Record<number, { ts: number; count: number; mood: number }>
       = {};
 
     const startOfDay = (ts: number) => { const d = new Date(ts); d.setHours(0, 0, 0, 0); return d.getTime(); };
@@ -136,9 +135,6 @@ export default function MedicationConcentrationChart({
       const bucket = buckets[day] || (buckets[day] = { ts: day + 12 * 3600 * 1000, count: 0, mood: 0 });
       bucket.count += 1;
       bucket.mood += p.mood ?? 0;
-      if (p.anxiety !== undefined) bucket.anxiety = (bucket.anxiety ?? 0) + p.anxiety;
-      if (p.energy !== undefined) bucket.energy = (bucket.energy ?? 0) + p.energy;
-      if (p.focus !== undefined) bucket.focus = (bucket.focus ?? 0) + p.focus;
     }
 
     return Object.values(buckets)
@@ -146,12 +142,23 @@ export default function MedicationConcentrationChart({
       .map(b => ({
         timestamp: b.ts,
         mood: +(b.mood / b.count).toFixed(2),
-        anxiety: b.anxiety !== undefined ? +(b.anxiety / b.count).toFixed(2) : undefined,
-        energy: b.energy !== undefined ? +(b.energy / b.count).toFixed(2) : undefined,
-        focus: b.focus !== undefined ? +(b.focus / b.count).toFixed(2) : undefined,
         count: b.count,
       }));
   }, [moodEntries, startTime, endTime, timeRangeHours]);
+
+  // Fetch heart rate data with appropriate bucket size
+  const bucketSize = timeRangeHours <= 48 ? 1800000 : 3600000; // 30min or 1hour
+  const heartRateData = useHeartRateChartData(startTime, endTime, bucketSize) ?? [];
+
+  // Normalize heart rate to 0-10 scale for left Y-axis display
+  const heartRateNormalized = useMemo(() => {
+    return heartRateData.map(hr => ({
+      timestamp: hr.timestamp,
+      heartRate: hr.heartRate,
+      heartRateNormalized: ((hr.heartRate - 40) / 120) * 10, // Normalize 40-160 BPM to 0-10
+      count: hr.count
+    }));
+  }, [heartRateData]);
 
   // Calculate Y-axis domain for concentration
   const concentrationDomain = useMemo(() => {
@@ -281,7 +288,7 @@ export default function MedicationConcentrationChart({
               {medication.name}
             </CardTitle>
             <CardDescription>
-              Serum concentration with therapeutic range and mood overlay
+              Serum concentration with therapeutic range, mood and heart rate overlay
             </CardDescription>
           </div>
 
@@ -413,6 +420,13 @@ export default function MedicationConcentrationChart({
                     return [`${value.toFixed(1)}/10`, count ? `${name} (avg ${count})` : name];
                   }
 
+                  if (name === 'Heart Rate (BPM)' || name === 'Heart Rate curve') {
+                    // Convert normalized value back to BPM (reverse of normalization)
+                    const bpm = entry?.payload?.heartRate || Math.round((value / 10) * 120 + 40);
+                    const count = entry?.payload?.count;
+                    return [`${bpm} BPM`, count ? `Heart Rate (avg ${count})` : 'Heart Rate'];
+                  }
+
                   if (name === medication.name) {
                     const displayUnit = medication.therapeuticRange?.unit ?? 'ng/mL';
                     const unitLower = displayUnit.toLowerCase();
@@ -492,6 +506,43 @@ export default function MedicationConcentrationChart({
                 animationEasing="ease-in-out"
                 connectNulls={true}
               />
+
+              {/* Heart Rate scatter plot overlay */}
+              {heartRateNormalized.length > 0 && (
+                <>
+                  <Scatter
+                    yAxisId="mood"
+                    data={heartRateNormalized}
+                    name="Heart Rate (BPM)"
+                    dataKey="heartRateNormalized"
+                    fill={HEART_RATE_COLOR}
+                    stroke={HEART_RATE_COLOR}
+                    strokeWidth={2}
+                    shape="circle"
+                    isAnimationActive={true}
+                    animationDuration={600}
+                    animationEasing="ease-in-out"
+                  />
+
+                  {/* Heart Rate interpolated line */}
+                  <Line
+                    yAxisId="mood"
+                    data={heartRateNormalized}
+                    type="monotone"
+                    dataKey="heartRateNormalized"
+                    name="Heart Rate curve"
+                    stroke={HEART_RATE_COLOR}
+                    strokeOpacity={0.8}
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    dot={false}
+                    isAnimationActive={true}
+                    animationDuration={800}
+                    animationEasing="ease-in-out"
+                    connectNulls={true}
+                  />
+                </>
+              )}
 
               {/* Zoom selection area */}
               {refAreaLeft !== null && refAreaRight !== null && (
