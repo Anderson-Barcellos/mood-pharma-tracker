@@ -1,11 +1,9 @@
 import { useCallback } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { v4 as uuidv4 } from 'uuid';
-import { db } from '@/core/database/db';
 import type { MedicationDose } from '@/shared/types';
 import { pkCache } from '@/features/analytics/utils/pharmacokinetics-cache';
-import { scheduleServerSync } from '@/core/services/server-sync';
+import * as serverApi from '@/core/services/server-api';
 
 interface DoseCreateInput extends Omit<MedicationDose, 'id' | 'createdAt'> {
   id?: string;
@@ -19,20 +17,15 @@ interface DoseUpdateInput extends Partial<Omit<MedicationDose, 'id' | 'createdAt
 export function useDoses(medicationId?: string) {
   const queryClient = useQueryClient();
 
-  const queryResult = useLiveQuery(
-    async () => {
-      if (medicationId) {
-        const records = await db.doses.where('medicationId').equals(medicationId).sortBy('timestamp');
-        return records.reverse();
-      }
+  // Fetch doses from server
+  const { data: allDoses = [], isLoading, error } = useQuery({
+    queryKey: ['doses', medicationId],
+    queryFn: () => serverApi.fetchDoses(medicationId),
+    staleTime: 1000 * 60, // 1 minute
+  });
 
-      const records = await db.doses.orderBy('timestamp').reverse().toArray();
-      return records ?? [];
-    },
-    [medicationId]
-  );
-
-  const doses = queryResult ?? [];
+  // Sort by timestamp descending (most recent first)
+  const doses = [...allDoses].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
   const invalidateCache = useCallback((medId: string) => {
     pkCache.invalidate(medId);
@@ -52,48 +45,69 @@ export function useDoses(medicationId?: string) {
     });
   }, [queryClient]);
 
+  const createMutation = useMutation({
+    mutationFn: (payload: DoseCreateInput) => {
+      const timestamp = payload.timestamp ?? Date.now();
+      const record: MedicationDose = {
+        id: payload.id ?? uuidv4(),
+        medicationId: payload.medicationId,
+        timestamp,
+        doseAmount: payload.doseAmount,
+        route: payload.route,
+        notes: payload.notes,
+        createdAt: payload.createdAt ?? Date.now()
+      };
+      return serverApi.createDose(record);
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['doses'] });
+      invalidateCache(data.medicationId);
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, updates }: { id: string; updates: DoseUpdateInput }) => {
+      return serverApi.updateDose(id, updates);
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['doses'] });
+      invalidateCache(data.medicationId);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      // Get dose from cache to know which medication to invalidate
+      const dose = allDoses.find(d => d.id === id);
+      await serverApi.deleteDose(id);
+      return dose?.medicationId;
+    },
+    onSuccess: (medicationId) => {
+      queryClient.invalidateQueries({ queryKey: ['doses'] });
+      if (medicationId) {
+        invalidateCache(medicationId);
+      }
+    },
+  });
+
   const createDose = useCallback(async (payload: DoseCreateInput) => {
-    const timestamp = payload.timestamp ?? Date.now();
-    const record: MedicationDose = {
-      id: payload.id ?? uuidv4(),
-      medicationId: payload.medicationId,
-      timestamp,
-      doseAmount: payload.doseAmount,
-      route: payload.route,
-      notes: payload.notes,
-      createdAt: payload.createdAt ?? Date.now()
-    };
-
-    await db.doses.put(record);
-    invalidateCache(payload.medicationId);
-    scheduleServerSync('dose:create');
-
-    return record;
-  }, [invalidateCache]);
+    return createMutation.mutateAsync(payload);
+  }, [createMutation]);
 
   const updateDose = useCallback(async (id: string, updates: DoseUpdateInput) => {
-    const dose = await db.doses.get(id);
-    if (dose) {
-      await db.doses.update(id, updates);
-      invalidateCache(dose.medicationId);
-      scheduleServerSync('dose:update');
-    }
-  }, [invalidateCache]);
+    await updateMutation.mutateAsync({ id, updates });
+  }, [updateMutation]);
 
   const deleteDose = useCallback(async (id: string) => {
-    const dose = await db.doses.get(id);
-    if (dose) {
-      await db.doses.delete(id);
-      invalidateCache(dose.medicationId);
-      scheduleServerSync('dose:delete');
-    }
-  }, [invalidateCache]);
+    await deleteMutation.mutateAsync(id);
+  }, [deleteMutation]);
 
   return {
     doses,
     createDose,
     updateDose,
     deleteDose,
-    isLoading: queryResult === undefined
+    isLoading,
+    error,
   } as const;
 }

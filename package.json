@@ -5,7 +5,7 @@
     "type": "module",
     "scripts": {
         "dev": "vite",
-        "dev:api": "node api/save-data.js",
+        "dev:api": "node api/server.js",
         "dev:all": "npm run dev:api & npm run dev",
         "dev:cognitive": "vite src/dev/cognitive-standalone/index.html --port 8114 --open",
         "kill": "fuser -k 8133/tcp",
@@ -58,6 +58,7 @@
         "dexie-react-hooks": "^1.1.7",
         "embla-carousel-react": "^8.5.2",
         "express": "^5.1.0",
+        "express-rate-limit": "^8.2.1",
         "framer-motion": "^12.6.2",
         "input-otp": "^1.4.2",
         "lucide-react": "^0.484.0",

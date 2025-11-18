@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/core/database/db';
+import { useQuery } from '@tanstack/react-query';
 import type { MedicationDose } from '@/shared/types';
+import * as serverApi from '@/core/services/server-api';
 
 interface UseDosesRangeOptions {
   medicationId: string;
@@ -10,28 +10,21 @@ interface UseDosesRangeOptions {
 }
 
 export function useDosesRange({ medicationId, startTime, endTime }: UseDosesRangeOptions) {
-  const queryResult = useLiveQuery(
-    async () => {
-      const doses = await db.doses
-        .where('[medicationId+timestamp]')
-        .between(
-          [medicationId, startTime],
-          [medicationId, endTime],
-          true,
-          true
-        )
-        .toArray();
+  const { data: allDoses = [], isLoading } = useQuery({
+    queryKey: ['doses', medicationId],
+    queryFn: () => serverApi.fetchDoses(medicationId),
+    staleTime: 1000 * 60, // 1 minute
+  });
 
-      return doses.sort((a, b) => a.timestamp - b.timestamp);
-    },
-    [medicationId, startTime, endTime]
-  );
-
-  const doses = useMemo(() => queryResult ?? [], [queryResult]);
+  const doses = useMemo(() => {
+    return allDoses
+      .filter(dose => dose.timestamp >= startTime && dose.timestamp <= endTime)
+      .sort((a, b) => a.timestamp - b.timestamp);
+  }, [allDoses, startTime, endTime]);
 
   return {
     doses,
-    isLoading: queryResult === undefined,
+    isLoading,
     count: doses.length
   } as const;
 }
@@ -41,34 +34,28 @@ export function useDosesRangeMultiple(
   startTime: number,
   endTime: number
 ) {
-  const queryResult = useLiveQuery(
-    async () => {
-      if (medicationIds.length === 0) return [];
+  // Fetch all doses (no medication filter)
+  const { data: allDoses = [], isLoading } = useQuery({
+    queryKey: ['doses'],
+    queryFn: () => serverApi.fetchDoses(),
+    staleTime: 1000 * 60, // 1 minute
+  });
 
-      const allDoses = await Promise.all(
-        medicationIds.map(medicationId =>
-          db.doses
-            .where('[medicationId+timestamp]')
-            .between(
-              [medicationId, startTime],
-              [medicationId, endTime],
-              true,
-              true
-            )
-            .toArray()
-        )
-      );
+  const doses = useMemo(() => {
+    if (medicationIds.length === 0) return [];
 
-      return allDoses.flat().sort((a, b) => a.timestamp - b.timestamp);
-    },
-    [medicationIds.join(','), startTime, endTime]
-  );
-
-  const doses = useMemo(() => queryResult ?? [], [queryResult]);
+    return allDoses
+      .filter(dose => 
+        medicationIds.includes(dose.medicationId) &&
+        dose.timestamp >= startTime && 
+        dose.timestamp <= endTime
+      )
+      .sort((a, b) => a.timestamp - b.timestamp);
+  }, [allDoses, medicationIds, startTime, endTime]);
 
   return {
     doses,
-    isLoading: queryResult === undefined,
+    isLoading,
     count: doses.length
   } as const;
 }
