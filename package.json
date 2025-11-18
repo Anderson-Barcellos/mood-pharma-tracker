@@ -5,7 +5,7 @@
     "type": "module",
     "scripts": {
         "dev": "vite",
-        "dev:api": "node api/save-data.js",
+        "dev:api": "node api/server.js",
         "dev:all": "npm run dev:api & npm run dev",
         "dev:cognitive": "vite src/dev/cognitive-standalone/index.html --port 8114 --open",
         "kill": "fuser -k 8133/tcp",
