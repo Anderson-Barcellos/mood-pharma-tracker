@@ -11,6 +11,9 @@ import "./main.css"
 import "./styles/theme.css"
 import "./index.css"
 
+// Import seed functions for development/testing (available via window.seedCompleteDemo())
+import './dev/seed-complete-demo'
+
 // Create a client for React Query
 const queryClient = new QueryClient({
   defaultOptions: {
