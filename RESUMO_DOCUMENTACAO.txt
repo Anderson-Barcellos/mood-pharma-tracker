@@ -1,0 +1,208 @@
+=============================================================================
+RESUMO DA DOCUMENTAÇÃO CRIADA - Mood & Pharma Tracker
+=============================================================================
+
+TAREFA COMPLETADA: Documentar processo de armazenamento e resgate de dados
+
+-----------------------------------------------------------------------------
+ARQUIVOS CRIADOS (96KB total)
+-----------------------------------------------------------------------------
+
+1. DOCUMENTACAO_ARMAZENAMENTO_DADOS.md (32KB, 1.207 linhas)
+   - Documentação técnica completa em português
+   - Arquitetura IndexedDB + Dexie
+   - CRUD operations detalhadas
+   - Sistema de sincronização
+   - Cache e performance
+   - Exemplos práticos
+
+2. FLUXOGRAMAS_DADOS.md (55KB, 1.200 linhas)
+   - 9 fluxogramas ASCII detalhados
+   - Visualização de processos
+   - Fluxos de sincronização
+   - Invalidação de cache
+
+3. GUIA_RAPIDO_DADOS.md (8.5KB, 316 linhas)
+   - Guia de referência rápida
+   - Exemplos prontos
+   - Links e glossário
+
+-----------------------------------------------------------------------------
+CONTEÚDO DOCUMENTADO
+-----------------------------------------------------------------------------
+
+MEDICAMENTOS (Medications):
+✓ Criar: createMedication() com parâmetros farmacocinéticos
+✓ Atualizar: updateMedication() com merge inteligente
+✓ Deletar: deleteMedication() com transação atômica (med + doses)
+✓ Listar: useMedications() com reatividade automática
+
+DOSES (Medication Doses):
+✓ Registrar: createDose() com timestamp preciso
+✓ Atualizar: updateDose() com invalidação de cache
+✓ Deletar: deleteDose() com limpeza de cache
+✓ Consultar: useDoses(medicationId?) com filtros
+
+HUMOR (Mood Entries):
+✓ Registrar: createMoodEntry() com 6 dimensões
+✓ Atualizar: updateMoodEntry()
+✓ Deletar: deleteMoodEntry()
+✓ Visualizar: useMoodEntries() com histórico
+
+SINCRONIZAÇÃO:
+✓ Local → Servidor: Automática com debounce 1.5s
+✓ Servidor → Local: Manual ou na inicialização
+✓ Detecção de conflitos via timestamps
+✓ Backup automático antes de sobrescrever
+✓ Validação robusta no backend
+
+CACHE:
+✓ useLiveQuery() - Reatividade
+✓ React Query - TTL 5min
+✓ LRU Cache - Farmacocinético
+✓ localStorage - Sync timestamps
+✓ IndexedDB.metadata - Timestamps confiáveis
+
+-----------------------------------------------------------------------------
+TECNOLOGIAS DOCUMENTADAS
+-----------------------------------------------------------------------------
+
+✓ IndexedDB - Banco de dados local
+✓ Dexie.js v4.0.8 - ORM reativo
+✓ React 19 - Componentes
+✓ TypeScript - Tipagem forte
+✓ Express.js - Backend API
+✓ React Query - Cache de queries
+
+-----------------------------------------------------------------------------
+SCHEMA INDEXEDDB (Versão 3)
+-----------------------------------------------------------------------------
+
+medications:
+- id (PK), name, category, halfLife, volumeOfDistribution
+- bioavailability, absorptionRate, therapeuticRange
+- createdAt, updatedAt
+- Índices: name, category, createdAt, updatedAt
+
+doses:
+- id (PK), medicationId (FK), timestamp, doseAmount
+- route, notes, createdAt
+- Índices: medicationId, timestamp, [medicationId+timestamp]
+
+moodEntries:
+- id (PK), timestamp, moodScore, anxietyLevel
+- energyLevel, focusLevel, sensitivityLevel, motivationLevel
+- notes, createdAt
+- Índices: timestamp, createdAt, moodScore
+
+cognitiveTests:
+- id (PK), timestamp, matrices, totalScore
+- averageResponseTime, accuracy, createdAt
+- Índices: timestamp, createdAt, totalScore
+
+metadata:
+- key (PK único), value, updatedAt
+- Armazena flags de migração e timestamps
+
+-----------------------------------------------------------------------------
+FLUXOGRAMAS DOCUMENTADOS
+-----------------------------------------------------------------------------
+
+1. Fluxo Geral do Sistema
+2. Armazenamento de Medicamentos (criar/atualizar/deletar)
+3. Armazenamento de Doses (+ invalidação cache)
+4. Armazenamento de Humor
+5. Leitura com useLiveQuery
+6. Sincronização: Salvar no Servidor
+7. Sincronização: Carregar do Servidor
+8. Migração de Dados Legados
+9. Invalidação de Cache Multinível
+
+-----------------------------------------------------------------------------
+EXEMPLOS DE CÓDIGO (10+ snippets)
+-----------------------------------------------------------------------------
+
+✓ Criar medicamento com parâmetros completos
+✓ Registrar dose e invalidar cache
+✓ Registrar humor multidimensional
+✓ Queries avançadas com Dexie
+✓ Sincronização manual
+✓ Consultas por período
+✓ Filtros e agregações
+✓ Tratamento de erros
+
+-----------------------------------------------------------------------------
+PERFORMANCE DOCUMENTADA
+-----------------------------------------------------------------------------
+
+✓ P50: < 50ms para operações CRUD
+✓ P95: < 200ms para queries complexas
+✓ P99: < 500ms para bulk operations
+✓ Cache hit ratio: > 90% para cálculos farmacocinéticos
+✓ Capacidade: 100.000+ registros sem degradação
+
+-----------------------------------------------------------------------------
+SEGURANÇA DOCUMENTADA
+-----------------------------------------------------------------------------
+
+✓ Armazenamento local-first (privacidade)
+✓ Sincronização opcional (não obrigatória)
+✓ Validação de timestamps no backend
+✓ Backup automático de snapshots
+✓ Same-origin policy (isolamento)
+✓ SHA-256 para autenticação
+
+-----------------------------------------------------------------------------
+BUILD STATUS
+-----------------------------------------------------------------------------
+
+✓ npm install: Sucesso (460 packages)
+✓ npm run build: Sucesso (11.4s, 7672 módulos)
+✓ Nenhum erro de compilação
+✓ Todos os tipos TypeScript validados
+
+-----------------------------------------------------------------------------
+COMMITS
+-----------------------------------------------------------------------------
+
+0bb4dca - Add quick start guide for data system documentation
+7311680 - Add comprehensive data storage and retrieval documentation
+e272f26 - Initial plan
+
+-----------------------------------------------------------------------------
+ESTATÍSTICAS
+-----------------------------------------------------------------------------
+
+Total de linhas: 2.723 linhas
+Total de bytes: 96KB
+Tempo de leitura: 2-3 horas (completo), 15min (guia rápido)
+Exemplos práticos: 10+ snippets executáveis
+Fluxogramas: 9 diagramas ASCII
+Arquivos analisados: 8 arquivos principais
+Interfaces: 4 interfaces TypeScript completas
+
+-----------------------------------------------------------------------------
+ACESSO À DOCUMENTAÇÃO
+-----------------------------------------------------------------------------
+
+Documentação Principal:
+→ DOCUMENTACAO_ARMAZENAMENTO_DADOS.md
+
+Diagramas Visuais:
+→ FLUXOGRAMAS_DADOS.md
+
+Referência Rápida:
+→ GUIA_RAPIDO_DADOS.md
+
+Este Resumo:
+→ RESUMO_DOCUMENTACAO.txt
+
+-----------------------------------------------------------------------------
+STATUS: ✅ TAREFA 100% CONCLUÍDA
+-----------------------------------------------------------------------------
+
+A documentação está completa, detalhada e pronta para uso.
+Todos os processos de armazenamento e resgate de dados estão
+documentados com exemplos práticos e fluxogramas visuais.
+
+=============================================================================
