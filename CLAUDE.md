@@ -196,6 +196,35 @@ const renderDot = (props: any) => {
 };
 ```
 
+#### Recharts Unified Dataset (for tooltip everywhere)
+```typescript
+// ✅ Single dataset with mood entries at real timestamps
+const data: ChartDataPoint[] = [];
+for (let i = 0; i <= totalPoints; i++) {
+  data.push({ timestamp, concentration, mood: null, ... });
+}
+for (const mood of moodEntries) {
+  data.push({ timestamp: mood.timestamp, mood: mood.moodScore, ... });
+}
+data.sort((a, b) => a.timestamp - b.timestamp);
+
+// ❌ Separate datasets = tooltip only on mood points
+const concentrationData = [...]; 
+const moodData = [...]; // Tooltip won't work on concentration line!
+```
+
+### React 19 + Radix UI
+```typescript
+// ✅ Required in main.tsx for Radix components
+import { DirectionProvider } from '@radix-ui/react-direction';
+
+<DirectionProvider dir="ltr">
+  <App />
+</DirectionProvider>
+
+// ❌ Without this, useContext errors in Tabs, Select, etc.
+```
+
 ---
 
 ## 🧪 Development Workflow
@@ -315,6 +344,16 @@ VITE_FIREBASE_APP_ID=
 
 ## 🚀 Recent Major Changes
 
+### 2025-12-05: PKChart Unification
+- ✅ Created unified `PKChart.tsx` component for all PK visualizations
+- ✅ Fixed mood timestamps (now shows real registration time, not noon)
+- ✅ Tooltip works across entire chart line (not just mood points)
+- ✅ Smoother curves: 48 points/day + monotoneX interpolation
+- ✅ Dual Y-axis: concentration (left), mood (right)
+- ✅ Added `DirectionProvider` for React 19 + Radix UI compatibility
+- ✅ Consolidated Dashboard and Analytics to use same chart component
+- ✅ Enhanced PK formula with Ka by drug class
+
 ### 2025-11-26: Major Refactoring
 - ✅ Reduced TypeScript errors from 98 to 7 (-93%)
 - ✅ Integrated AdvancedCorrelationsView into Dashboard
@@ -397,8 +436,19 @@ npm run process:health
 
 ### Main Components
 - `/src/features/analytics/components/Dashboard.tsx` - Main dashboard
+- `/src/features/analytics/components/PKChart.tsx` - Unified PK + Mood chart (use this!)
 - `/src/features/analytics/components/AdvancedCorrelationsView.tsx` - Advanced correlations
 - `/src/shared/layouts/AppLayout.tsx` - App shell
+
+### Chart Components (Consolidated)
+```
+PKChart.tsx           ← USE THIS (unified, tooltip works everywhere)
+├── Used by: ConcentrationChart.tsx (Dashboard wrapper)
+├── Used by: AnalyticsView.tsx (Analytics page)
+└── Features: dual Y-axis, real timestamps, smooth curves
+
+MedicationConcentrationChart.tsx  ← DEPRECATED (do not use)
+```
 
 ---
 
@@ -426,9 +476,9 @@ npm run process:health
 
 ---
 
-**Last Updated:** 2025-11-26
-**Project Status:** ✅ Build passing, 7 non-critical TS errors, ready for deployment
-**Next Priority:** Implement temporal lag analysis, cleanup console.logs
+**Last Updated:** 2025-12-05
+**Project Status:** ✅ Build passing, 5 non-critical TS errors, PKChart unified
+**Next Priority:** Implement temporal lag analysis, cleanup console.logs, remove deprecated MedicationConcentrationChart
 
 ---
 

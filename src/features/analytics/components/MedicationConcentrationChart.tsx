@@ -142,49 +142,23 @@ export default function MedicationConcentrationChart({
     bodyWeight
   });
 
-  // Show ALL mood entries (don't filter by medication)
+  // Show ALL mood entries with real timestamps (no aggregation)
   const moodData = useMemo(() => {
-    const withinRange = [...moodEntries]
+    return [...moodEntries]
       .filter(entry => entry.timestamp >= startTime && entry.timestamp <= endTime)
       .sort((a, b) => a.timestamp - b.timestamp)
-      .map(entry => ({
-        timestamp: entry.timestamp,
-        mood: entry.moodScore,
-        anxiety: entry.anxietyLevel,
-        energy: entry.energyLevel,
-        focus: entry.focusLevel,
-      }));
-
-    // Agregar por dia quando o range for maior que 48h
-    const aggregateByDay = timeRangeHours > 48;
-    if (!aggregateByDay) return withinRange;
-
-    const buckets: Record<number, { ts: number; count: number; mood: number; anxiety?: number; energy?: number; focus?: number }>
-      = {};
-
-    const startOfDay = (ts: number) => { const d = new Date(ts); d.setHours(0, 0, 0, 0); return d.getTime(); };
-
-    for (const p of withinRange) {
-      const day = startOfDay(p.timestamp);
-      const bucket = buckets[day] || (buckets[day] = { ts: day + 12 * 3600 * 1000, count: 0, mood: 0 });
-      bucket.count += 1;
-      bucket.mood += p.mood ?? 0;
-      if (p.anxiety !== undefined) bucket.anxiety = (bucket.anxiety ?? 0) + p.anxiety;
-      if (p.energy !== undefined) bucket.energy = (bucket.energy ?? 0) + p.energy;
-      if (p.focus !== undefined) bucket.focus = (bucket.focus ?? 0) + p.focus;
-    }
-
-    return Object.values(buckets)
-      .sort((a, b) => a.ts - b.ts)
-      .map(b => ({
-        timestamp: b.ts,
-        mood: +(b.mood / b.count).toFixed(2),
-        anxiety: b.anxiety !== undefined ? +(b.anxiety / b.count).toFixed(2) : undefined,
-        energy: b.energy !== undefined ? +(b.energy / b.count).toFixed(2) : undefined,
-        focus: b.focus !== undefined ? +(b.focus / b.count).toFixed(2) : undefined,
-        count: b.count,
-      }));
-  }, [moodEntries, startTime, endTime, timeRangeHours]);
+      .map(entry => {
+        const date = new Date(entry.timestamp);
+        return {
+          timestamp: entry.timestamp,
+          mood: entry.moodScore,
+          anxiety: entry.anxietyLevel,
+          energy: entry.energyLevel,
+          focus: entry.focusLevel,
+          exactTime: `${date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} às ${date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
+        };
+      });
+  }, [moodEntries, startTime, endTime]);
 
   // Calculate Y-axis domain for concentration
   const concentrationDomain = useMemo(() => {
@@ -401,28 +375,28 @@ export default function MedicationConcentrationChart({
                 }}
               />
 
-              {/* Left Y-axis: Mood (0-10) */}
+              {/* Left Y-axis: Concentration (ng/mL) - primary clinical metric */}
               <YAxis
-                yAxisId="mood"
-                domain={[0, 10]}
+                yAxisId="concentration"
+                domain={concentrationDomain}
                 tick={{ fontSize: 11 }}
+                tickFormatter={(value) => value.toFixed(1)}
                 label={{
-                  value: 'Mood Score',
+                  value: 'Concentração (ng/mL)',
                   angle: -90,
                   position: 'insideLeft',
                   style: { fontSize: 12, textAnchor: 'middle' }
                 }}
               />
 
-              {/* Right Y-axis: Concentration (ng/mL) */}
+              {/* Right Y-axis: Mood (0-10) */}
               <YAxis
-                yAxisId="concentration"
+                yAxisId="mood"
                 orientation="right"
-                domain={concentrationDomain}
+                domain={[0, 10]}
                 tick={{ fontSize: 11 }}
-                tickFormatter={(value) => value.toFixed(1)}
                 label={{
-                  value: 'Concentration (ng/mL)',
+                  value: 'Humor (0-10)',
                   angle: 90,
                   position: 'insideRight',
                   style: { fontSize: 12, textAnchor: 'middle' }
@@ -445,13 +419,14 @@ export default function MedicationConcentrationChart({
                 }}
                 content={({ active, payload, label }) => {
                   if (!active || !payload?.length) return null;
-                  
+
                   const point = payload[0]?.payload;
                   const timestamp = typeof label === 'number' ? label : point?.timestamp;
                   let concentration = point?.concentration;
                   const mood = point?.mood;
+                  const exactTime = point?.exactTime;
                   const displayUnit = medication.therapeuticRange?.unit ?? 'ng/mL';
-                  
+
                   if ((concentration === undefined || concentration === null) && timestamp && chartData?.length) {
                     const closest = chartData.reduce((prev, curr) => {
                       const prevDiff = Math.abs((prev.timestamp || 0) - timestamp);
@@ -462,7 +437,16 @@ export default function MedicationConcentrationChart({
                       concentration = closest.concentration;
                     }
                   }
-                  
+
+                  const getTherapeuticStatus = () => {
+                    if (!therapeuticRangeNgMl || concentration === undefined || concentration === null) return null;
+                    if (concentration < therapeuticRangeNgMl.min) return { text: 'Subterapêutico', color: '#f59e0b' };
+                    if (concentration > therapeuticRangeNgMl.max) return { text: 'Acima da faixa', color: '#ef4444' };
+                    return { text: 'Na faixa terapêutica', color: '#22c55e' };
+                  };
+
+                  const therapeuticStatus = getTherapeuticStatus();
+
                   return (
                     <div style={{
                       backgroundColor: 'hsl(var(--card))',
@@ -472,11 +456,18 @@ export default function MedicationConcentrationChart({
                       boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
                     }}>
                       <div style={{ fontWeight: 600, marginBottom: '6px', color: 'hsl(var(--foreground))' }}>
-                        {typeof label === 'number' && label > 0 ? formatTooltip(label) : label}
+                        {exactTime || formatTooltip(timestamp)}
                       </div>
                       {concentration !== undefined && concentration !== null && (
-                        <div style={{ color: medication.color || '#8b5cf6', marginBottom: '4px' }}>
-                          {medication.name}: <strong>{concentration.toFixed(2)} {displayUnit}</strong>
+                        <div style={{ marginBottom: '4px' }}>
+                          <span style={{ color: medication.color || '#8b5cf6' }}>
+                            {medication.name}: <strong>{concentration.toFixed(2)} {displayUnit}</strong>
+                          </span>
+                          {therapeuticStatus && (
+                            <div style={{ fontSize: '0.8em', color: therapeuticStatus.color, marginTop: '2px' }}>
+                              {therapeuticStatus.text}
+                            </div>
+                          )}
                         </div>
                       )}
                       {mood !== undefined && mood !== null && (
@@ -532,7 +523,7 @@ export default function MedicationConcentrationChart({
               {/* Concentration curve */}
               <Area
                 yAxisId="concentration"
-                type="monotone"
+                type="natural"
                 dataKey="concentration"
                 name={medication.name}
                 stroke={color}
@@ -543,6 +534,7 @@ export default function MedicationConcentrationChart({
                 animationDuration={800}
                 animationEasing="ease-in-out"
                 hide={hiddenSeries.has('concentration')}
+                activeDot={{ r: 5, fill: color, stroke: '#fff', strokeWidth: 2 }}
               />
 
               {/* Mood scatter plot overlay */}
@@ -567,14 +559,14 @@ export default function MedicationConcentrationChart({
               <Line
                 yAxisId="mood"
                 data={moodData}
-                type="monotone"
+                type="natural"
                 dataKey="mood"
                 name="Mood"
                 stroke={MOOD_COLOR}
                 strokeOpacity={0.95}
                 strokeWidth={3}
-                dot={{ r: 4, fill: MOOD_COLOR, strokeWidth: 0 }}
-                activeDot={{ r: 6, fill: MOOD_COLOR, strokeWidth: 2, stroke: '#fff' }}
+                dot={{ r: 5, fill: MOOD_COLOR, strokeWidth: 0 }}
+                activeDot={{ r: 7, fill: MOOD_COLOR, strokeWidth: 2, stroke: '#fff' }}
                 isAnimationActive={true}
                 animationDuration={800}
                 animationEasing="ease-in-out"

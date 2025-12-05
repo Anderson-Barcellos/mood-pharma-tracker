@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { TimeframeSelector, type TimeframePeriod, getTimeframeDays, usePersistedTimeframe } from '@/shared/components/TimeframeSelector';
 import type { Medication, MedicationDose, MoodEntry } from '@/shared/types';
-import MedicationConcentrationChart from './MedicationConcentrationChart';
+import PKChart from './PKChart';
 
 interface ConcentrationChartProps {
   medications: Medication[];
@@ -17,14 +17,10 @@ export default function ConcentrationChart({
   moodEntries,
   bodyWeight = 70
 }: ConcentrationChartProps) {
-  // Dynamic timeframe with persistence
   const initialTimeframe = usePersistedTimeframe('dashboard-concentration-timeframe', '7d');
   const [timeframe, setTimeframe] = useState<TimeframePeriod>(initialTimeframe);
-  const [zoomDomain, setZoomDomain] = useState<{ left: number; right: number } | null>(null);
 
-  // Calculate hours from timeframe
-  const days = getTimeframeDays(timeframe);
-  const timeRangeHours = days ? days * 24 : 36; // Fallback to 36h for 'all'
+  const daysRange = getTimeframeDays(timeframe) ?? 7;
 
   if (medications.length === 0) {
     return (
@@ -71,15 +67,13 @@ export default function ConcentrationChart({
       {/* Grid of individual medication charts */}
       <div className="grid gap-6 grid-cols-1">
         {medications.map((medication) => (
-          <MedicationConcentrationChart
+          <PKChart
             key={medication.id}
             medication={medication}
             doses={doses}
             moodEntries={moodEntries}
-            timeRangeHours={timeRangeHours}
+            daysRange={daysRange}
             bodyWeight={bodyWeight}
-            zoomDomain={zoomDomain}
-            onZoom={setZoomDomain}
           />
         ))}
       </div>
@@ -88,14 +82,13 @@ export default function ConcentrationChart({
       <Card className="border-dashed">
         <CardContent className="pt-6">
           <div className="text-sm text-muted-foreground space-y-2">
-            <p className="font-medium">📊 Chart Features:</p>
+            <p className="font-medium">📊 Funcionalidades:</p>
             <ul className="list-disc list-inside space-y-1 ml-2">
-              <li>Fixed 36-hour window showing recent medication history</li>
-              <li>Each medication has its own chart with concentration curve (right Y-axis)</li>
-              <li>All charts show the same mood data (left Y-axis, green curve)</li>
-              <li>Shaded areas indicate therapeutic ranges for each medication</li>
-              <li>Click and drag on any chart to zoom - zoom applies to all charts</li>
-              <li>Export individual charts as PNG images</li>
+              <li>Curva de concentração à esquerda (ng/mL)</li>
+              <li>Humor registrado à direita (escala 1-10)</li>
+              <li>Timestamps reais dos registros de humor</li>
+              <li>Linhas tracejadas indicam faixa terapêutica</li>
+              <li>Exporte como PNG clicando no ícone de download</li>
             </ul>
           </div>
         </CardContent>

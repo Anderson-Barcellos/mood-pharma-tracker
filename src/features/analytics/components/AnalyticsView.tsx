@@ -1,15 +1,12 @@
 import { useState, useMemo } from 'react';
-import { ComposedChart, Line, Area, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { GlassCard } from '@/shared/ui/glass-card';
 import { Label } from '@/shared/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select';
 import { TimeframeSelector, type TimeframePeriod, getTimeframeDays, usePersistedTimeframe } from '@/shared/components/TimeframeSelector';
-import { calculateConcentration } from '@/features/analytics/utils/pharmacokinetics';
 import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from '@/shared/types';
-import { Brain, Pill, Smiley, ChartLine, TrendUp, TrendDown, Clock } from '@phosphor-icons/react';
+import { Brain, Pill, Smiley, TrendUp, TrendDown, Clock } from '@phosphor-icons/react';
 import { cn } from '@/shared/utils';
+import PKChart from './PKChart';
 
 interface AnalyticsViewProps {
   medications: Medication[];
@@ -25,66 +22,6 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
   const dayRange = getTimeframeDays(timeframe) ?? 7;
 
   const selectedMedication = medications.find(m => m.id === selectedMedicationId);
-
-  const chartData = useMemo(() => {
-    if (!selectedMedication) return [];
-
-    const allTimestamps: number[] = [];
-    doses.forEach(d => allTimestamps.push(d.timestamp));
-    moodEntries.forEach(m => allTimestamps.push(m.timestamp));
-
-    const dataEndTime = allTimestamps.length > 0 ? Math.max(...allTimestamps) : Date.now();
-    const endTime = dataEndTime;
-    const startTime = endTime - (dayRange * 24 * 60 * 60 * 1000);
-
-    const pointsPerDay = 24;
-    const totalPoints = Math.ceil(dayRange * pointsPerDay);
-    const interval = (endTime - startTime) / totalPoints;
-
-    const timePoints: number[] = [];
-    for (let i = 0; i <= totalPoints; i++) {
-      timePoints.push(startTime + (i * interval));
-    }
-
-    const relevantDoses = doses.filter(
-      d => d.medicationId === selectedMedication.id &&
-           d.timestamp >= startTime &&
-           d.timestamp <= endTime
-    );
-
-    return timePoints.map(time => {
-      const dataPoint: any = {
-        time,
-        timestamp: time,
-        formattedTime: time && Number.isFinite(time) ? format(time, 'dd MMM HH:mm', { locale: ptBR }) : ''
-      };
-
-      const concentration = calculateConcentration(selectedMedication, relevantDoses, time);
-      dataPoint.concentration = concentration > 0.01 ? concentration : null;
-
-      const nearbyMoods = moodEntries.filter(m => Math.abs(m.timestamp - time) < interval);
-      if (nearbyMoods.length > 0) {
-        const closestMood = nearbyMoods.sort(
-          (a, b) => Math.abs(a.timestamp - time) - Math.abs(b.timestamp - time)
-        )[0];
-        dataPoint.mood = closestMood.moodScore;
-      }
-
-      return dataPoint;
-    });
-  }, [selectedMedication, dayRange, doses, moodEntries]);
-
-  const concentrationRange = useMemo(() => {
-    if (chartData.length === 0) return { min: 0, max: 100 };
-    const concentrations = chartData
-      .map(d => d.concentration)
-      .filter((c): c is number => c !== null && c !== undefined);
-    if (concentrations.length === 0) return { min: 0, max: 100 };
-    const min = Math.min(...concentrations);
-    const max = Math.max(...concentrations);
-    const padding = (max - min) * 0.15;
-    return { min: Math.max(0, min - padding), max: max + padding };
-  }, [chartData]);
 
   const stats = useMemo(() => {
     const endTime = Date.now();
@@ -124,7 +61,7 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
     };
   }, [moodEntries, doses, dayRange, selectedMedication]);
 
-  const medColor = selectedMedication?.color ?? 'hsl(var(--primary))';
+  const medColor = selectedMedication?.color ?? '#8b5cf6';
 
   return (
     <div className="space-y-6">
@@ -223,101 +160,12 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
       </div>
 
       {selectedMedication ? (
-        <GlassCard className="p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 rounded-lg" style={{ backgroundColor: `${medColor}20` }}>
-              <ChartLine className="w-5 h-5" style={{ color: medColor }} />
-            </div>
-            <div>
-              <h3 className="font-semibold">{selectedMedication.name}</h3>
-              <p className="text-sm text-muted-foreground">Concentracao plasmatica vs Humor</p>
-            </div>
-          </div>
-
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData} margin={{ top: 10, right: 40, left: 10, bottom: 10 }}>
-                <defs>
-                  <linearGradient id="concentrationGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={medColor} stopOpacity={0.3} />
-                    <stop offset="95%" stopColor={medColor} stopOpacity={0.05} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
-                <XAxis 
-                  dataKey="time" 
-                  type="number"
-                  domain={['dataMin', 'dataMax']}
-                  tickFormatter={(tick) => format(tick, 'dd/MM', { locale: ptBR })}
-                  tick={{ fontSize: 11 }}
-                />
-                <YAxis 
-                  yAxisId="concentration"
-                  domain={[concentrationRange.min, concentrationRange.max]}
-                  tick={{ fontSize: 11 }}
-                  tickFormatter={(v) => v.toFixed(0)}
-                  label={{ value: 'ng/mL', angle: -90, position: 'insideLeft', style: { fontSize: 11 } }}
-                />
-                <YAxis 
-                  yAxisId="mood"
-                  orientation="right"
-                  domain={[0, 10]}
-                  tick={{ fontSize: 11 }}
-                  label={{ value: 'Humor', angle: 90, position: 'insideRight', style: { fontSize: 11 } }}
-                />
-                <Tooltip 
-                  contentStyle={{
-                    backgroundColor: 'hsl(var(--card))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px'
-                  }}
-                  labelFormatter={(label) => format(label, "dd MMM 'as' HH:mm", { locale: ptBR })}
-                  formatter={(value: any, name: string) => {
-                    if (name === 'Concentracao') return [`${Number(value).toFixed(1)} ng/mL`, name];
-                    if (name === 'Humor') return [`${Number(value).toFixed(1)}/10`, name];
-                    return [value, name];
-                  }}
-                />
-                <Legend wrapperStyle={{ paddingTop: 16 }} />
-                <Area
-                  yAxisId="concentration"
-                  type="monotone"
-                  dataKey="concentration"
-                  stroke={medColor}
-                  fill="url(#concentrationGradient)"
-                  strokeWidth={2}
-                  name="Concentracao"
-                  connectNulls
-                />
-                <Scatter
-                  yAxisId="mood"
-                  dataKey="mood"
-                  fill="#22c55e"
-                  name="Humor"
-                />
-                <Line
-                  yAxisId="mood"
-                  type="natural"
-                  dataKey="mood"
-                  stroke="#22c55e"
-                  strokeWidth={2}
-                  strokeOpacity={0.8}
-                  dot={false}
-                  connectNulls
-                  name="Humor"
-                  legendType="none"
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-
-          {selectedMedication.therapeuticRange && (
-            <div className="mt-4 pt-4 border-t flex items-center gap-3 text-sm text-muted-foreground">
-              <div className="w-4 h-2 rounded" style={{ backgroundColor: `${medColor}30`, border: `1px dashed ${medColor}` }} />
-              <span>Faixa terapeutica: {selectedMedication.therapeuticRange.min}-{selectedMedication.therapeuticRange.max} {selectedMedication.therapeuticRange.unit}</span>
-            </div>
-          )}
-        </GlassCard>
+        <PKChart
+          medication={selectedMedication}
+          doses={doses}
+          moodEntries={moodEntries}
+          daysRange={dayRange}
+        />
       ) : (
         <GlassCard className="p-12 text-center">
           <Pill className="w-16 h-16 mx-auto mb-4 text-muted-foreground opacity-50" />
