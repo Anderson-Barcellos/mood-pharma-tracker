@@ -1,11 +1,9 @@
-import { useCallback } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { v4 as uuidv4 } from 'uuid';
-import { db } from '@/core/database/db';
 import type { MedicationDose } from '@/shared/types';
 import { pkCache } from '@/features/analytics/utils/pharmacokinetics-cache';
-import { scheduleServerSync } from '@/core/services/server-sync';
+import { useAppDataSnapshot, useAppDataMutator } from '@/hooks/use-app-data-store';
 
 interface DoseCreateInput extends Omit<MedicationDose, 'id' | 'createdAt'> {
   id?: string;
@@ -18,21 +16,14 @@ interface DoseUpdateInput extends Partial<Omit<MedicationDose, 'id' | 'createdAt
 
 export function useDoses(medicationId?: string) {
   const queryClient = useQueryClient();
+  const { data, isLoading, isFetching } = useAppDataSnapshot();
+  const { mutateAppData } = useAppDataMutator();
+  const allDoses = data?.doses ?? [];
 
-  const queryResult = useLiveQuery(
-    async () => {
-      if (medicationId) {
-        const records = await db.doses.where('medicationId').equals(medicationId).sortBy('timestamp');
-        return records.reverse();
-      }
-
-      const records = await db.doses.orderBy('timestamp').reverse().toArray();
-      return records ?? [];
-    },
-    [medicationId]
-  );
-
-  const doses = queryResult ?? [];
+  const doses = useMemo(() => {
+    const filtered = medicationId ? allDoses.filter((dose) => dose.medicationId === medicationId) : allDoses;
+    return [...filtered].sort((a, b) => b.timestamp - a.timestamp);
+  }, [allDoses, medicationId]);
 
   const invalidateCache = useCallback((medId: string) => {
     pkCache.invalidate(medId);
@@ -64,36 +55,46 @@ export function useDoses(medicationId?: string) {
       createdAt: payload.createdAt ?? Date.now()
     };
 
-    await db.doses.put(record);
+    await mutateAppData((snapshot) => ({
+      ...snapshot,
+      doses: [record, ...snapshot.doses]
+    }));
     invalidateCache(payload.medicationId);
-    scheduleServerSync('dose:create');
 
     return record;
-  }, [invalidateCache]);
+  }, [invalidateCache, mutateAppData]);
 
   const updateDose = useCallback(async (id: string, updates: DoseUpdateInput) => {
-    const dose = await db.doses.get(id);
-    if (dose) {
-      await db.doses.update(id, updates);
-      invalidateCache(dose.medicationId);
-      scheduleServerSync('dose:update');
+    const currentDose = allDoses.find((dose) => dose.id === id);
+    if (!currentDose) {
+      return;
     }
-  }, [invalidateCache]);
+
+    await mutateAppData((snapshot) => ({
+      ...snapshot,
+      doses: snapshot.doses.map((dose) => (dose.id === id ? { ...dose, ...updates } : dose))
+    }));
+    invalidateCache(currentDose.medicationId);
+  }, [allDoses, invalidateCache, mutateAppData]);
 
   const deleteDose = useCallback(async (id: string) => {
-    const dose = await db.doses.get(id);
-    if (dose) {
-      await db.doses.delete(id);
-      invalidateCache(dose.medicationId);
-      scheduleServerSync('dose:delete');
+    const currentDose = allDoses.find((dose) => dose.id === id);
+    if (!currentDose) {
+      return;
     }
-  }, [invalidateCache]);
+
+    await mutateAppData((snapshot) => ({
+      ...snapshot,
+      doses: snapshot.doses.filter((dose) => dose.id !== id)
+    }));
+    invalidateCache(currentDose.medicationId);
+  }, [allDoses, invalidateCache, mutateAppData]);
 
   return {
     doses,
     createDose,
     updateDose,
     deleteDose,
-    isLoading: queryResult === undefined
+    isLoading: (!data && (isLoading || isFetching))
   } as const;
 }

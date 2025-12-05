@@ -1,55 +1,58 @@
-import { useCallback } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/core/database/db';
+import { useCallback, useMemo } from 'react';
 import type { Medication } from '@/shared/types';
 import { createMedicationRecord, mergeMedicationRecord, type MedicationDraft } from '@/core/database/medication-helpers';
-import { scheduleServerSync } from '@/core/services/server-sync';
+import { useAppDataSnapshot, useAppDataMutator } from '@/hooks/use-app-data-store';
 
 type MedicationCreateInput = MedicationDraft & Required<Pick<Medication, 'name' | 'halfLife' | 'volumeOfDistribution' | 'bioavailability'>>;
 type MedicationUpdateInput = MedicationDraft;
 
 export function useMedications() {
-  const queryResult = useLiveQuery(
-    async () => {
-      const records = await db.medications.orderBy('createdAt').reverse().toArray();
-      return records ?? [];
-    },
-    []
-  );
+  const { data, isLoading, isFetching } = useAppDataSnapshot();
+  const { mutateAppData } = useAppDataMutator();
+  const sourceMedications = data?.medications ?? [];
 
-  const medications = queryResult ?? [];
+  const medications = useMemo(() => {
+    return [...sourceMedications].sort((a, b) => b.createdAt - a.createdAt);
+  }, [sourceMedications]);
 
   const createMedication = useCallback(async (payload: MedicationCreateInput) => {
     const record = createMedicationRecord(payload);
-    await db.medications.put(record);
-    scheduleServerSync('medication:create');
+    await mutateAppData((snapshot) => ({
+      ...snapshot,
+      medications: [record, ...snapshot.medications]
+    }));
     return record;
-  }, []);
+  }, [mutateAppData]);
 
   const updateMedication = useCallback(async (id: string, updates: MedicationUpdateInput) => {
-    const existing = await db.medications.get(id);
+    const existing = sourceMedications.find((med) => med.id === id);
     if (!existing) {
       return;
     }
 
-    const merged = mergeMedicationRecord(existing, updates);
-    await db.medications.put(merged);
-    scheduleServerSync('medication:update');
-  }, []);
+    await mutateAppData((snapshot) => ({
+      ...snapshot,
+      medications: snapshot.medications.map((med) => (med.id === id ? mergeMedicationRecord(med, updates) : med))
+    }));
+  }, [mutateAppData, sourceMedications]);
 
   const deleteMedication = useCallback(async (id: string) => {
-    await db.transaction('rw', db.medications, db.doses, async () => {
-      await db.medications.delete(id);
-      await db.doses.where('medicationId').equals(id).delete();
-    });
-    scheduleServerSync('medication:delete');
-  }, []);
+    if (!sourceMedications.some((med) => med.id === id)) {
+      return;
+    }
+
+    await mutateAppData((snapshot) => ({
+      ...snapshot,
+      medications: snapshot.medications.filter((med) => med.id !== id),
+      doses: snapshot.doses.filter((dose) => dose.medicationId !== id)
+    }));
+  }, [mutateAppData, sourceMedications]);
 
   return {
     medications,
     createMedication,
     updateMedication,
     deleteMedication,
-    isLoading: queryResult === undefined
+    isLoading: (!data && (isLoading || isFetching))
   } as const;
 }

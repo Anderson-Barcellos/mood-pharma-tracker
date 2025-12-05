@@ -8,7 +8,7 @@
 import { useState } from 'react';
 import { Button } from '@/shared/ui/button';
 import { GlassCard, GlassCardHeader, GlassCardTitle, GlassCardDescription, GlassCardContent } from '@/shared/ui/glass-card';
-import { exportLocalData } from '@/core/services/server-data-loader';
+import { fetchAppData } from '@/core/services/app-data-service';
 import { Download } from 'lucide-react';
 
 export function DataExportImport() {
@@ -23,7 +23,7 @@ export function DataExportImport() {
     setMessage(null);
 
     try {
-      const data = await exportLocalData();
+      const data = await fetchAppData();
 
       // Create JSON blob
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });

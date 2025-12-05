@@ -1,9 +1,7 @@
-import { useCallback } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useCallback, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { db } from '@/core/database/db';
 import type { MoodEntry } from '@/shared/types';
-import { scheduleServerSync } from '@/core/services/server-sync';
+import { useAppDataSnapshot, useAppDataMutator } from '@/hooks/use-app-data-store';
 
 interface MoodEntryCreateInput extends Omit<MoodEntry, 'id' | 'createdAt'> {
   id?: string;
@@ -15,12 +13,13 @@ interface MoodEntryUpdateInput extends Partial<Omit<MoodEntry, 'id' | 'createdAt
 }
 
 export function useMoodEntries() {
-  const queryResult = useLiveQuery(async () => {
-    const records = await db.moodEntries.orderBy('timestamp').reverse().toArray();
-    return records ?? [];
-  }, []);
+  const { data, isLoading, isFetching } = useAppDataSnapshot();
+  const { mutateAppData } = useAppDataMutator();
+  const sourceMoodEntries = data?.moodEntries ?? [];
 
-  const moodEntries = queryResult ?? [];
+  const moodEntries = useMemo(() => {
+    return [...sourceMoodEntries].sort((a, b) => b.timestamp - a.timestamp);
+  }, [sourceMoodEntries]);
 
   const createMoodEntry = useCallback(async (payload: MoodEntryCreateInput) => {
     const timestamp = payload.timestamp ?? Date.now();
@@ -35,26 +34,40 @@ export function useMoodEntries() {
       createdAt: payload.createdAt ?? timestamp
     };
 
-    await db.moodEntries.put(record);
-    scheduleServerSync('mood:create');
+    await mutateAppData((snapshot) => ({
+      ...snapshot,
+      moodEntries: [record, ...snapshot.moodEntries]
+    }));
     return record;
-  }, []);
+  }, [mutateAppData]);
 
   const updateMoodEntry = useCallback(async (id: string, updates: MoodEntryUpdateInput) => {
-    await db.moodEntries.update(id, updates);
-    scheduleServerSync('mood:update');
-  }, []);
+    if (!sourceMoodEntries.some((entry) => entry.id === id)) {
+      return;
+    }
+
+    await mutateAppData((snapshot) => ({
+      ...snapshot,
+      moodEntries: snapshot.moodEntries.map((entry) => (entry.id === id ? { ...entry, ...updates } : entry))
+    }));
+  }, [mutateAppData, sourceMoodEntries]);
 
   const deleteMoodEntry = useCallback(async (id: string) => {
-    await db.moodEntries.delete(id);
-    scheduleServerSync('mood:delete');
-  }, []);
+    if (!sourceMoodEntries.some((entry) => entry.id === id)) {
+      return;
+    }
+
+    await mutateAppData((snapshot) => ({
+      ...snapshot,
+      moodEntries: snapshot.moodEntries.filter((entry) => entry.id !== id)
+    }));
+  }, [mutateAppData, sourceMoodEntries]);
 
   return {
     moodEntries,
     createMoodEntry,
     updateMoodEntry,
     deleteMoodEntry,
-    isLoading: queryResult === undefined
+    isLoading: (!data && (isLoading || isFetching))
   } as const;
 }

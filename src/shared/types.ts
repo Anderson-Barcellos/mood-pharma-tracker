@@ -42,6 +42,7 @@ export interface MoodEntry {
   anxietyLevel?: number;
   energyLevel?: number;
   focusLevel?: number;
+  cognitiveScore?: number;
   notes?: string;
   createdAt: number;
 }

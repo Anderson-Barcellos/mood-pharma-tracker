@@ -1,540 +1,435 @@
-# CLAUDE.md
+# Mood & Pharma Tracker - Project Context
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## 📋 Project Overview
 
-## Project Overview
+Personal health tracking PWA for monitoring medication adherence, mood patterns, and cognitive performance with pharmacokinetic modeling and correlation analysis.
 
-**Mood & Pharma Tracker** - A privacy-first Progressive Web App (PWA) for personal therapeutic monitoring of psychiatric medications with real-time pharmacokinetic modeling, mood tracking, and AI-powered cognitive testing. Built as a local-first application with optional server synchronization for cross-device access.
-
-**Current Status**: Production-ready with authentication, data sync, and full PWA capabilities.
-
-**Tech Stack**:
-- **Frontend**: React 19 + TypeScript + Vite 6.3.5
-- **Styling**: Tailwind CSS 4 + Custom Glassmorphism Design System
-- **Database**: IndexedDB (Dexie 4.0.8) - Offline-first storage
-- **UI Components**: Radix UI + Custom Glass Components
-- **Charts**: Recharts + D3.js
-- **AI**: Google Gemini API (cognitive tests only)
-- **Build**: Vite with optimized chunking and PWA support
-- **Backend**: Express.js (optional, file-based data sync)
-
-**Key Characteristics**:
-- Feature-based architecture (not MVC)
-- Offline-first with PWA capabilities
-- Complex pharmacokinetic calculations with multi-level caching
-- Medical-grade data handling (privacy-critical)
-- Glassmorphism UI with triadic color palette
-- Cross-device data synchronization (optional)
+**Stack:** React 19 + TypeScript + Vite + Dexie (IndexedDB) + Radix UI + Tailwind CSS v4
 
 ---
 
-## Current Configuration & Setup
+## 🎯 Core Features
 
-### Server Configuration
+### 1. Medication Tracking
+- Pharmacokinetic modeling (half-life, bioavailability, volume of distribution)
+- Real-time concentration calculations
+- Multiple medication support with dose logging
 
-**Apache Reverse Proxy**:
-- **Config File**: `/etc/apache2/sites-available/mood-pharma-tracker-8114.conf`
-- **Status**: Enabled (symlink in `/etc/apache2/sites-enabled/`)
-- **Public Port**: 8114 (HTTPS with Let's Encrypt SSL)
-- **Domain**: ultrassom.ai / www.ultrassom.ai
-- **Proxy Target**: localhost:8112 (Vite dev server)
-- **WebSocket**: HMR (Hot Module Replacement) enabled
-- **Security**: Headers configured (X-Content-Type-Options, X-Frame-Options, X-XSS-Protection)
+### 2. Mood Monitoring
+- Quick mood logging (1-10 scale)
+- Anxiety, energy, and focus tracking
+- Time-series visualization
 
-**Access URLs**:
-- **Local Development**: http://127.0.0.1:8112/
-- **Production**: https://ultrassom.ai:8114/
+### 3. Cognitive Testing
+- AI-generated Raven's matrices (Gemini 2.0 Flash)
+- Pattern recognition assessment
+- Response time tracking
 
-**API Backend** (Optional):
-- **Port**: 3001
-- **Endpoint**: `/api/save-data` (POST)
-- **Storage**: File-based (`/public/data/app-data.json`)
-- **Features**: Data validation, backup creation, timestamp checking
+### 4. Health Data Integration
+- Samsung Health CSV import (heart rate)
+- Correlation analysis: HR ↔ Medications ↔ Mood
+- Context-aware classification (sleep/exercise/stress/resting)
 
-### Development Commands
-
-```bash
-# Development server (Vite on port 8112)
-npm run dev
-
-# Development with API backend
-npm run dev:api      # API only (port 3001)
-npm run dev:all      # Both Vite + API simultaneously
-
-# Production build
-npm run build        # Outputs to dist/ with optimized chunks
-
-# Type checking (highly recommended before commits)
-npx tsc --noEmit
-
-# Linting
-npm run lint
-
-# Kill dev server if port is stuck
-npm run kill         # Kills port 8133
-npm run kill:all     # Kills ports 8112 and 3001
-# Manual: fuser -k 8112/tcp
-
-# Preview production build
-npm run preview      # Serves dist/ on port 8112
-```
-
-### Environment Variables
-
-```bash
-# Required for cognitive tests
-VITE_GEMINI_API_KEY=your_gemini_api_key_here
-```
+### 5. Advanced Analytics
+- Correlation matrices with statistical significance
+- Temporal lag analysis (planned)
+- Pharmacokinetic concentration charting
 
 ---
 
-## Architecture Deep Dive
+## 🏗️ Architecture
 
 ### Feature-Based Structure
-
-Code is organized by feature, NOT by type. Each feature is self-contained with its own components, hooks, services, and types:
-
 ```
-src/features/
-├── auth/           # Password-based lock screen + session management
-├── medications/     # Medication CRUD + pharmacokinetic parameters
-├── doses/          # Dose logging + timestamp management
-├── mood/           # Mood tracking (multi-dimensional scales)
-├── cognitive/      # AI-generated Raven's matrices tests
-├── analytics/      # Concentration curves, correlations, dashboard
-└── settings/       # App configuration and preferences
+src/
+├── features/
+│   ├── analytics/        # Correlations, charts, insights
+│   ├── cognitive/        # Raven's matrices tests
+│   ├── doses/            # Medication dose logging
+│   ├── health-data/      # Samsung Health integration
+│   │   ├── core/         # Types, parsers, engines
+│   │   ├── heart-rate/   # HR-specific processing
+│   │   ├── services/     # HeartRateProcessor
+│   │   └── utils/        # csv-parser.ts (shared)
+│   ├── medications/      # Medication CRUD
+│   └── mood/             # Mood entry logging
+├── shared/
+│   ├── components/       # Reusable UI components
+│   ├── hooks/            # use-mobile, use-haptic
+│   ├── layouts/          # AppLayout, PWA shell
+│   ├── types.ts          # Core types (Medication, MoodEntry, etc.)
+│   └── ui/               # Design system (Radix + Tailwind)
+└── core/
+    └── auth/             # Firebase authentication
 ```
 
-**Shared Code**: Lives in `src/shared/` (components, utilities, types, styles)
+### Data Layer
+- **Local-first:** Dexie (IndexedDB) for offline support
+- **Optional sync:** Firebase for backup/multi-device
+- **No server required:** PWA works fully offline
 
-**Core Business Logic**: Lives in `src/core/` (database, services, auth)
+---
+from 
+## 🔧 Coding Conventions
 
-### Database Schema (IndexedDB + Dexie)
+### TypeScript
 
-**Database Name**: `MoodPharmaTrackerDB`
-**Current Version**: v3
+#### Type Definitions
+```typescript
+// ✅ Use shared base types
+import type { Medication, MedicationDose, MoodEntry } from '@/shared/types';
+import type { HeartRateRecord } from '@/features/health-data/core/types';
 
-**Tables**:
+// ✅ Extend base types when needed
+export interface HeartRateRecord extends BaseHealthRecord {
+  type: 'heart-rate';
+  heartRate: number;
+  context?: 'resting' | 'exercise' | 'sleep' | 'stress';
+}
+
+// ❌ Don't create duplicate interfaces
+```
+
+#### Optional Fields
+```typescript
+// ✅ Handle undefined with nullish coalescing
+const avg = entries.reduce((sum, e) => sum + (e.anxietyLevel ?? 0), 0);
+
+// ❌ Don't assume optional fields exist
+const avg = entries.reduce((sum, e) => sum + e.anxietyLevel, 0); // Error!
+```
+
+#### Imports
+```typescript
+// ✅ Use path aliases
+import { Button } from '@/shared/ui/button';
+import { useDoses } from '@/hooks/use-doses';
+
+// ❌ Avoid relative imports for shared code
+import { Button } from '../../../shared/ui/button';
+```
+
+### Health Data Processing
+
+#### Heart Rate Validation
+```typescript
+// ✅ Physiologically valid range
+const isValidHR = (hr: number) => hr >= 30 && hr <= 220;
+
+// ❌ Too permissive
+const isValidHR = (hr: number) => hr > 0 && hr < 300;
+```
+
+#### Context Inference Logic
+```typescript
+const inferContext = (heartRate: number, hour: number): HeartRateRecord['context'] => {
+  if ((hour >= 22 || hour <= 6) && heartRate < 70) return 'sleep';
+  if (heartRate > 120) return 'exercise';
+  if (heartRate > 100 || heartRate < 50) return 'stress';
+  return 'resting';
+};
+```
+
+#### CSV Parsing
+```typescript
+// ✅ Use shared csv-parser utility
+import { parseSamsungHealthHeartRateCSV } from '@/features/health-data/utils/csv-parser';
+
+const records = parseSamsungHealthHeartRateCSV(csvContent, {
+  fileName: file.name,
+  validateHR: (hr) => hr >= 30 && hr <= 220,
+  inferContext: true
+});
+
+// ❌ Don't duplicate parsing logic
+```
+
+### React Components
+
+#### Component Structure
+```typescript
+// ✅ Export as default for pages/views
+export default function Dashboard({ medications, doses }: DashboardProps) {
+  // ...
+}
+
+// ✅ Named exports for utilities/helpers
+export function calculateCorrelation(x: number[], y: number[]) {
+  // ...
+}
+```
+
+#### Hooks
+```typescript
+// ✅ Use shared hooks from /shared/hooks
+import { useIsMobile } from '@/shared/hooks/use-mobile';
+
+// ❌ Don't duplicate hooks in feature folders
+```
+
+### UI/UX
+
+#### GlassCard Variants
+```typescript
+// ✅ Valid variants
+<GlassCard variant="default" />
+<GlassCard variant="elevated" />
+<GlassCard variant="interactive" />
+<GlassCard variant="subtle" />
+
+// ❌ Invalid
+<GlassCard variant="flat" /> // Does not exist!
+```
+
+#### Recharts Custom Dots
+```typescript
+// ✅ Return empty fragment, not null
+const renderDot = (props: any) => {
+  if (!condition) return <></>;
+  return <Dot {...props} />;
+};
+
+// ❌ Causes TypeScript errors
+const renderDot = (props: any) => {
+  if (!condition) return null; // Error!
+  return <Dot {...props} />;
+};
+```
+
+---
+
+## 🧪 Development Workflow
+
+### Build & Type Check
+```bash
+# TypeScript check (should have ≤7 errors in test files)
+npx tsc --noEmit
+
+# Production build (should pass in ~18s)
+npm run build
+
+# Development server
+npm run dev
+```
+
+### Testing Changes
+1. **Always run TypeScript check first:** `npx tsc --noEmit`
+2. **Test build:** `npm run build`
+3. **Manual testing:** Test in browser, especially PWA features
+4. **Check console:** No errors or warnings
+
+### Adding New Features
+1. Place in appropriate `/features` folder
+2. Use shared types from `/shared/types.ts`
+3. Create feature-specific types in `[feature]/types.ts` if needed
+4. Import shared utilities (csv-parser, hooks, etc.)
+5. Update Dashboard/Navigation if user-facing
+
+---
+
+## 📊 Data Models
+
+### Medication
 ```typescript
 interface Medication {
   id: string;
   name: string;
-  category: 'antidepressant' | 'antipsychotic' | 'mood_stabilizer' | 'anxiolytic' | 'stimulant';
-  halfLife: number;           // hours
-  volumeOfDistribution: number; // L/kg
-  bioavailability: number;    // fraction [0..1]
-  absorptionRate?: number;    // 1/h (optional)
+  genericName?: string;
+  halfLife: number;              // hours
+  volumeOfDistribution: number;  // L/kg
+  bioavailability: number;       // 0-1
+  absorptionRate: number;        // 1/hours
+  therapeuticRange?: { min: number; max: number; unit: string };
+  color?: string;
+  notes?: string;
   createdAt: number;
   updatedAt: number;
 }
+```
 
-interface MedicationDose {
-  id: string;
-  medicationId: string;
-  timestamp: number;          // Unix timestamp (ms)
-  doseAmount: number;         // mg
-  route: 'oral' | 'intravenous' | 'intramuscular' | 'subcutaneous';
-  notes?: string;
-  createdAt: number;
-}
-
+### MoodEntry
+```typescript
 interface MoodEntry {
   id: string;
   timestamp: number;
-  moodScore: number;          // 0-10 scale
-  anxietyLevel: number;       // 0-10 scale
-  energyLevel: number;        // 0-10 scale
-  focusLevel: number;         // 0-10 scale
+  moodScore: number;        // 1-10
+  anxietyLevel?: number;    // 1-10
+  energyLevel?: number;     // 1-10
+  focusLevel?: number;      // 1-10
+  cognitiveScore?: number;  // from tests
   notes?: string;
   createdAt: number;
 }
+```
 
-interface CognitiveTest {
-  id: string;
-  timestamp: number;
-  matrices: RavenMatrix[];    // Test questions
-  totalScore: number;
-  averageResponseTime: number;
-  accuracy: number;           // percentage
-  createdAt: number;
-}
-
-interface AppMetadata {
-  key: string;
-  value: unknown;
-  updatedAt: number;
+### HeartRateRecord
+```typescript
+interface HeartRateRecord extends BaseHealthRecord {
+  type: 'heart-rate';
+  heartRate: number;                                      // BPM (30-220)
+  context?: 'resting' | 'exercise' | 'sleep' | 'stress';
+  source_device?: string;
 }
 ```
 
-**Critical Indexes**:
-- `doses`: `[medicationId+timestamp]` - Compound index for efficient dose queries
-- `medications`: `name, category, createdAt, updatedAt`
-- `moodEntries`: `timestamp, moodScore, createdAt`
-- `cognitiveTests`: `timestamp, totalScore, createdAt`
+---
 
-**Migration System**: Automatic upgrades from legacy localStorage data with validation and normalization.
+## 🔐 Environment Setup
 
-### Pharmacokinetic Calculation System
-
-**Location**: `src/features/analytics/utils/pharmacokinetics.ts`
-
-**Models Supported**:
-- **One-compartment**: Standard model for most medications
-- **Two-compartment**: For highly distributed drugs (Vd > 10 L/kg)
-
-**Key Functions**:
-```typescript
-calculateConcentration(
-  medication: Medication,
-  doses: MedicationDose[],
-  targetTime: number,
-  bodyWeight: number = 70
-): number
+### Required
+```bash
+# Gemini API for cognitive tests
+VITE_GEMINI_API_KEY=your_key_here
 ```
 
-**Performance Optimizations**:
-- **LRU Cache**: 5-minute TTL with automatic invalidation
-- **React Query**: 5-minute staleTime for component-level caching
-- **Multi-level Caching**: Prevents recalculation of expensive operations
-
-**Cache Monitoring**: `window.__perfMonitor.getReport()` in browser console
-
-### Authentication System
-
-**Type**: Password-based with SHA-256 hashing + device-specific salt
-**Storage**: localStorage (PWA-compatible)
-**Features**:
-- Optional activation in Analytics settings
-- Session management with tokens
-- Glassmorphism lock screen UI
-- No backend required
-
-**Files**:
-- `src/features/auth/services/simple-auth.ts` - Core auth logic
-- `src/features/auth/components/LockScreen.tsx` - Password entry UI
-- `src/features/auth/components/PasswordSettings.tsx` - Configuration UI
-
-### Data Synchronization System
-
-**Architecture**: Bidirectional sync between IndexedDB ↔ Server JSON file
-**Server Storage**: `/public/data/app-data.json` (file-based, no database needed)
-**Trigger**: Manual via UI buttons (not real-time)
-
-**Key Components**:
-- `src/core/services/server-data-loader.ts` - Sync logic
-- `api/save-data.js` - Express endpoint with validation
-- `src/shared/components/DataExportImport.tsx` - UI controls
-
-**Sync Flow**:
-1. **Load**: Automatic on app start (pull from server)
-2. **Save**: Manual button click (push to server)
-3. **Backup**: Automatic server-side backups before overwrites
-
----
-
-## UI/UX Design System
-
-### Glassmorphism Components
-
-**Core Components** (`src/shared/ui/`):
-- `GlassCard` - Main container with blur effects
-- `GlassButton` - Interactive elements with glow
-- `GlassInput` - Form inputs with glass styling
-- `GlassModal` - Overlay dialogs
-
-**Variants**: `default`, `elevated`, `flat`, `interactive`
-
-### Color Palette (Triadic System)
-
-```css
-/* Medical/Pharmaceutical (Primary) */
---color-primary-500: #00adad;  /* Teal */
-
-/* Psychological/Mood (Secondary) */
---color-secondary-500: #8b73bd; /* Purple */
-
-/* Cognitive (Accent) */
---color-accent-500: #3d9fc1;   /* Blue */
+### Optional (Firebase)
+```bash
+VITE_FIREBASE_API_KEY=
+VITE_FIREBASE_AUTH_DOMAIN=
+VITE_FIREBASE_PROJECT_ID=
+VITE_FIREBASE_STORAGE_BUCKET=
+VITE_FIREBASE_MESSAGING_SENDER_ID=
+VITE_FIREBASE_APP_ID=
 ```
 
-### Typography Scale
+---
 
-- **Display**: Medical headers and titles
-- **Sans**: UI text and content
-- **Mono**: Code and data display
+## 🐛 Known Issues & Limitations
 
-### Animations & Transitions
+### TypeScript Errors (Non-Critical)
+- 7 errors in test/script files (`SimpleTestDataGenerator`, `seed-test-data`)
+- Do not affect runtime or build
+- Can be safely ignored for now
 
-- **Clinical**: Smooth, medical-appropriate easing
-- **Spring**: Interactive feedback
-- **Glass Morph**: Progressive blur effects
+### Incomplete Features
+1. **Temporal Lag Analysis:** Tab exists but empty (AdvancedCorrelationsView.tsx:566)
+2. **API Endpoint:** `/api/list-health-files` not implemented
+3. **Console.log:** 120+ statements in production code (needs cleanup)
+
+### Performance Notes
+- Large bundle (733KB / 206KB gzip) - mainly from Recharts
+- Consider lazy loading analytics features
+- CSV processing is synchronous - large files may block UI
 
 ---
 
-## Key Features Implementation
+## 🚀 Recent Major Changes
 
-### 1. Medication Management
+### 2025-11-26: Major Refactoring
+- ✅ Reduced TypeScript errors from 98 to 7 (-93%)
+- ✅ Integrated AdvancedCorrelationsView into Dashboard
+- ✅ Created shared CSV parser utility
+- ✅ Standardized HeartRateRecord types
+- ✅ Removed 17 unused dependencies
+- ✅ Fixed build process (now passes in 17.55s)
 
-**CRUD Operations**: Create, read, update, delete medications
-**Pharmacokinetic Parameters**: Half-life, Vd, bioavailability, absorption rate
-**Categories**: Antidepressant, antipsychotic, mood stabilizer, anxiolytic, stimulant
-**Validation**: Medical parameter ranges and required fields
-
-### 2. Dose Logging
-
-**Timestamp Precision**: Millisecond-accurate logging
-**Routes**: Oral, IV, IM, subcutaneous
-**Quick Add**: Floating action button for rapid entry
-**Validation**: Dose ranges and medication existence
-
-### 3. Mood Tracking
-
-**Multi-dimensional**: Mood (0-10), anxiety, energy, focus
-**Time-based**: Timestamp-accurate entries
-**Visualization**: Time-series charts with correlations
-**Notes**: Optional text annotations
-
-### 4. Cognitive Testing
-
-**AI-Powered**: Google Gemini generates Raven's matrices
-**Offline Fallback**: Cached test patterns
-**Metrics**: Score, response time, accuracy
-**Progressive**: Difficulty scaling based on performance
-
-### 5. Analytics Dashboard
-
-**Concentration Curves**: Real-time pharmacokinetic modeling
-**Correlations**: Mood vs medication levels
-**Timeframes**: Custom date ranges with presets
-**Export**: JSON backup and server sync
-
-### 6. Health Data Integration (Samsung Health)
-
-**Data Sources**: Heart rate, activity (steps/exercise), sleep
-**Parsers**: Specialized parsers for each Samsung Health CSV format
-**Correlations**: Advanced statistical analysis (Pearson correlation with p-values)
-**Multi-system Analysis**: Health ↔ Mood ↔ Medication concentration correlations
-**Health Score**: Composite 0-100 score based on multiple metrics
-**Insights**: AI-generated actionable recommendations
-**Processing**: `npx tsx src/features/health-data/core/analysis-demo.ts`
-**Output**: JSON data + Markdown executive summaries
-
-### 7. PWA Features
-
-**Manifest**: `public/manifest.json`
-**Service Worker**: `public/service-worker.js`
-**Install Prompt**: Automatic PWA installation
-**Offline Mode**: Full functionality without network
+See `REFACTORING_2025-11-26.md` for full details.
 
 ---
 
-## Development Guidelines
-
-### Code Conventions
-
-**Imports**: Use `@/` alias for absolute imports (configured in `vite.config.ts`)
-
-**File Naming**:
-- Components: `PascalCase.tsx`
-- Hooks: `use-kebab-case.ts`
-- Services: `kebab-case.ts`
-- Types: Feature-specific or `shared/types.ts`
-
-**TypeScript**: Strict mode enabled. No `any` types. Use Zod for runtime validation.
-
-**Styling**: Tailwind utility classes. Custom CSS only when necessary.
-
-### Performance Targets
-
-- **P50**: < 50ms for calculations
-- **P95**: < 200ms for chart renders
-- **P99**: < 500ms for database queries
-
-**Measurement**: Use `perfMonitor.measure()` for performance tracking.
-
-### Build Optimization
-
-**Chunk Splitting** (configured in `vite.config.ts`):
-- `vendor-react`: React core libraries
-- `vendor-ui`: Radix UI components
-- `vendor-charts`: Recharts + D3
-- `vendor-forms`: React Hook Form + validation
-- `vendor-motion`: Framer Motion
-- `vendor-db`: Dexie + hooks
-
-**Asset Optimization**:
-- SVG icons with multiple sizes
-- WebP/AVIF image support
-- Font subsetting and optimization
-
-### Testing Strategy
-
-**Unit Tests**: Pharmacokinetic calculations and utilities
-**Integration Tests**: Database operations and API endpoints
-**E2E Tests**: Critical user flows (planned)
-
----
-
-## Deployment & Production
-
-### Build Process
+## 📝 Development Commands
 
 ```bash
-npm run build  # Creates optimized dist/
-```
-
-**Output Structure**:
-```
-dist/
-├── assets/
-│   ├── js/     # Code-split chunks
-│   ├── css/    # Stylesheets
-│   └── icons/  # PWA icons
-├── index.html
-└── manifest.json
-```
-
-### Apache Configuration
-
-**Virtual Host**: Port 8114 with SSL termination
-**Proxy**: WebSocket support for HMR
-**Security**: Comprehensive headers and SSL
-
-### Environment Setup
-
-**Production Variables**:
-```bash
-VITE_GEMINI_API_KEY=production_key_here
-```
-
-**Systemd Service**: `mood-pharma-tracker.service` for auto-start
-
-### Monitoring & Maintenance
-
-**Logs**: Apache access/error logs
-**Backups**: Automatic data snapshots
-**Updates**: Rolling deployments with backup validation
-
----
-
-## Security & Privacy
-
-### Data Handling
-
-- **Local-First**: All data stored in IndexedDB
-- **Encryption**: Password hashing with salt
-- **No Telemetry**: Zero tracking or analytics
-- **Server Sync**: Optional, user-controlled, file-based
-
-### Medical Context
-
-**Disclaimer**: Personal monitoring tool, not medical device
-**Privacy**: Single-user app with optional password protection
-**Data Export**: JSON format for external analysis
-
----
-
-## Common Development Tasks
-
-### Adding a New Medication Parameter
-
-1. Update `Medication` interface in `src/shared/types.ts`
-2. Add to Dexie schema in `src/core/database/db.ts` (increment version!)
-3. Update normalization in `medication-helpers.ts`
-4. Add to UI forms in `src/features/medications/`
-5. Update pharmacokinetic calculations if needed
-
-### Modifying Pharmacokinetic Calculations
-
-1. Update functions in `src/features/analytics/utils/pharmacokinetics.ts`
-2. **CRITICAL**: Increment `CACHE_VERSION` constant to invalidate cache
-3. Test with `window.__perfMonitor.logReport()`
-4. Update performance benchmarks
-
-### Adding a New Chart Type
-
-1. Use Recharts components in `src/features/analytics/components/`
-2. Follow existing patterns with cached data hooks
-3. Apply glassmorphism styling
-4. Add to dashboard layout
-
-### Implementing New Feature
-
-1. Create feature directory under `src/features/`
-2. Implement components, hooks, services, types
-3. Add navigation in `src/shared/layouts/`
-4. Update database schema if needed
-5. Add to main app routing
-
----
-
-## Documentation Structure
-
-```
-docs/
-├── architecture/    # PRD, navigation, security
-├── design/          # Design system, colors, glassmorphism
-├── deployment/      # PWA setup, service config
-├── features/        # Feature-specific guides
-└── performance/     # Optimization docs, benchmarks
-```
-
-**Essential Reading**:
-- `docs/architecture/PRD.md` - Product requirements
-- `docs/performance/PHARMACOKINETICS_OPTIMIZATION.md` - Cache system
-- `docs/design/DESIGN_SYSTEM.md` - UI patterns
-
----
-
-## Troubleshooting
-
-### Common Issues
-
-**Port Conflicts**:
-```bash
-# Check what's using ports
-lsof -i :8112
-lsof -i :3001
-
-# Kill processes
-npm run kill:all
-```
-
-**Database Issues**:
-```typescript
-// Reset database in browser console
-await db.delete();
-location.reload();
-```
-
-**Cache Problems**:
-```typescript
-// Clear all caches
-localStorage.clear();
-location.reload();
-```
-
-**Build Issues**:
-```bash
-# Clean install
-rm -rf node_modules package-lock.json
+# Install dependencies
 npm install
+
+# Development
+npm run dev
+
+# Build for production
+npm run build
+
+# Preview production build
+npm preview
+
+# Type check only
+npx tsc --noEmit
+
+# Generate test data
+npm run seed:data
+
+# Process health data
+npm run process:health
 ```
 
 ---
 
-## Recent Updates (October 2025)
+## 🎨 Design System
 
-- ✅ **Authentication System**: SHA-256 password hashing with device salt
-- ✅ **Data Synchronization**: Bidirectional IndexedDB ↔ Server sync
-- ✅ **Apache Integration**: Reverse proxy with SSL and WebSocket support
-- ✅ **PWA Optimization**: Service worker, install prompts, offline mode
-- ✅ **Performance Monitoring**: Built-in perf tracking and reporting
-- ✅ **Type Safety**: Full TypeScript with strict mode
-- ✅ **Build Optimization**: Advanced chunk splitting and asset optimization
+### Colors
+- **Primary:** Teal/Cyan (`#00adad`)
+- **Medical UI:** Purple/Violet (`#8b73bd`)
+- **Charts:** Multi-color palette for medications
+- **Dark Mode:** Full support with CSS variables
 
-**Next Priorities**:
-- Enhanced cognitive test patterns
-- Advanced pharmacokinetic models
-- Mobile-specific optimizations
-- Automated testing suite
+### Components
+- **GlassCard:** Primary container with glassmorphism
+- **Button:** Radix UI with custom variants
+- **Charts:** Recharts with custom styling
+- **Forms:** React Hook Form + Zod validation
+
+### Responsive
+- Mobile-first design
+- Touch targets ≥48px
+- PWA safe areas for iOS notch
+- Compact mode for smaller screens
+
+---
+
+## 🔍 File Locations Quick Reference
+
+### Core Types
+- `/src/shared/types.ts` - Medication, MoodEntry, CognitiveTest
+- `/src/features/health-data/core/types.ts` - Health data types
+
+### Utilities
+- `/src/features/health-data/utils/csv-parser.ts` - Samsung Health CSV parsing
+- `/src/features/analytics/utils/correlations.ts` - Statistical correlations
+- `/src/features/analytics/utils/statistics-engine.ts` - Stats calculations
+- `/src/features/analytics/utils/pharmacokinetics.ts` - PK modeling
+
+### Hooks
+- `/src/shared/hooks/use-mobile.ts` - Mobile detection
+- `/src/hooks/use-doses.ts` - Dose data management
+- `/src/hooks/use-medications.ts` - Medication data
+- `/src/hooks/use-mood-entries.ts` - Mood data
+- `/src/features/health-data/hooks/useHeartRateData.ts` - HR data
+
+### Main Components
+- `/src/features/analytics/components/Dashboard.tsx` - Main dashboard
+- `/src/features/analytics/components/AdvancedCorrelationsView.tsx` - Advanced correlations
+- `/src/shared/layouts/AppLayout.tsx` - App shell
+
+---
+
+## 💡 Tips for AI Assistants
+
+### When Adding Features
+1. Check `/src/shared/types.ts` first for existing types
+2. Look for similar features in other `/features` folders
+3. Reuse utilities from `/shared` and `/features/*/utils`
+4. Follow existing naming conventions
+5. Update this CLAUDE.md if adding major conventions
+
+### When Debugging
+1. Run `npx tsc --noEmit` first
+2. Check browser console for runtime errors
+3. Verify imports use `@/` path aliases
+4. Look for duplicate code (should be in utilities)
+
+### When Refactoring
+1. Create utilities for duplicated logic
+2. Centralize types in appropriate locations
+3. Maintain backwards compatibility when possible
+4. Update documentation (this file + comments)
+5. Test build and type check before committing
+
+---
+
+**Last Updated:** 2025-11-26
+**Project Status:** ✅ Build passing, 7 non-critical TS errors, ready for deployment
+**Next Priority:** Implement temporal lag analysis, cleanup console.logs
+
+---
+
+Bora codar! 🚀

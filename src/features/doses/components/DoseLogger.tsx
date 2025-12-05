@@ -13,12 +13,10 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { safeFormat } from '@/shared/utils';
 import { parseLocalDateTime } from '@/shared/utils/date-helpers';
-import { useProtectedAction } from '@/shared/components/ProtectedAction';
 
 export default function DoseLogger() {
   const { medications } = useMedications();
   const { doses, createDose } = useDoses();
-  const protectedAction = useProtectedAction();
   const [selectedMedicationId, setSelectedMedicationId] = useState('');
   const [doseAmount, setDoseAmount] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -36,7 +34,7 @@ export default function DoseLogger() {
     const medication = medications.find(m => m.id === selectedMedicationId);
     if (!medication) return;
 
-    protectedAction(async () => {
+    (async () => {
       try {
         const timestamp = parseLocalDateTime(selectedDate, selectedTime);
 
@@ -62,7 +60,7 @@ export default function DoseLogger() {
           description: error instanceof Error ? error.message : 'Please check the date and time fields'
         });
       }
-    });
+    })();
   };
 
   const recentDoses = [...doses].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);

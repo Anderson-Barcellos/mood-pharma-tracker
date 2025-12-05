@@ -205,7 +205,7 @@ export class HealthDataService {
       });
 
       // Calculate date range
-      let dateRange = null;
+      let dateRange: { start: string; end: string } | null = null;
       if (sessions.length > 0) {
         const sortedSessions = sessions.sort((a, b) => a.date.localeCompare(b.date));
         dateRange = {
@@ -297,7 +297,7 @@ export class HealthDataService {
     insights?: HealthInsight[];
   }): Promise<void> {
     try {
-      const promises = [];
+      const promises: Promise<any>[] = [];
 
       if (data.records) {
         promises.push(healthDb.healthRecords.bulkPut(data.records));

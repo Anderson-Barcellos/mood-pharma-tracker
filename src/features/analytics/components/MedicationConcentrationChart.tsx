@@ -33,6 +33,15 @@ const MOOD_COLOR = '#22c55e'; // green
 
 type ChartMouseEvent = {
   activeLabel?: number | string;
+  activeCoordinate?: { x: number; y: number };
+};
+
+// Helper to extract numeric timestamp from chart event
+const getActiveTimestamp = (e: ChartMouseEvent): number | null => {
+  if (!e || e.activeLabel === undefined || e.activeLabel === null) return null;
+  if (typeof e.activeLabel === 'number') return e.activeLabel;
+  const parsed = Number(e.activeLabel);
+  return Number.isFinite(parsed) ? parsed : null;
 };
 
 export default function MedicationConcentrationChart({
@@ -47,7 +56,23 @@ export default function MedicationConcentrationChart({
   const [refAreaLeft, setRefAreaLeft] = useState<number | null>(null);
   const [refAreaRight, setRefAreaRight] = useState<number | null>(null);
 
+  // Series visibility state for legend toggle
+  const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set());
+
   const chartRef = useRef<HTMLDivElement>(null);
+
+  // Toggle series visibility when clicking legend
+  const handleLegendClick = useCallback((dataKey: string) => {
+    setHiddenSeries(prev => {
+      const next = new Set(prev);
+      if (next.has(dataKey)) {
+        next.delete(dataKey);
+      } else {
+        next.add(dataKey);
+      }
+      return next;
+    });
+  }, []);
 
   const dayRange = timeRangeHours / 24;
   const { formatXAxis, formatTooltip, getXAxisInterval, getXAxisLabel } = useTimeFormat('days', dayRange);
@@ -67,14 +92,22 @@ export default function MedicationConcentrationChart({
     [moodEntries]
   );
 
-  const [chartEndTime, setChartEndTime] = useState(() => Date.now());
+  const latestDataTimestamp = useMemo(
+    () => Math.max(latestDoseTimestamp, latestMoodTimestamp),
+    [latestDoseTimestamp, latestMoodTimestamp]
+  );
+
+  const [chartEndTime, setChartEndTime] = useState(() => (latestDataTimestamp || Date.now()));
 
   useEffect(() => {
-    setChartEndTime(() => {
-      const base = Date.now();
-      return Math.max(base, latestDoseTimestamp, latestMoodTimestamp);
-    });
-  }, [latestDoseTimestamp, latestMoodTimestamp, timeRangeHours]);
+    // Se houver dados, ancoramos o gráfico no timestamp mais recente.
+    // Isso evita que dados "antigos" fiquem sempre fora da janela baseada em Date.now().
+    if (latestDataTimestamp) {
+      setChartEndTime(latestDataTimestamp);
+    } else {
+      setChartEndTime(Date.now());
+    }
+  }, [latestDataTimestamp, timeRangeHours]);
 
   const endTime = chartEndTime;
 
@@ -286,11 +319,14 @@ export default function MedicationConcentrationChart({
           </div>
 
           <div className="flex items-center gap-2">
-            {zoomDomain && (
+            {(zoomDomain || hiddenSeries.size > 0) && (
               <Button
                 variant="outline"
                 size="sm"
-                onClick={resetZoom}
+                onClick={() => {
+                  resetZoom();
+                  setHiddenSeries(new Set());
+                }}
                 className="gap-2"
               >
                 <ArrowsOut className="h-4 w-4" />
@@ -315,14 +351,19 @@ export default function MedicationConcentrationChart({
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
               data={chartData}
+              margin={{ top: 10, right: 60, left: 20, bottom: 30 }}
               onMouseDown={(e: ChartMouseEvent) => {
-                if (e && typeof e.activeLabel === 'number') {
-                  setRefAreaLeft(e.activeLabel);
+                const timestamp = getActiveTimestamp(e);
+                if (timestamp !== null) {
+                  setRefAreaLeft(timestamp);
                 }
               }}
               onMouseMove={(e: ChartMouseEvent) => {
-                if (refAreaLeft !== null && e && typeof e.activeLabel === 'number') {
-                  setRefAreaRight(e.activeLabel);
+                if (refAreaLeft !== null) {
+                  const timestamp = getActiveTimestamp(e);
+                  if (timestamp !== null) {
+                    setRefAreaRight(timestamp);
+                  }
                 }
               }}
               onMouseUp={zoom}
@@ -397,37 +438,82 @@ export default function MedicationConcentrationChart({
                 }}
                 labelStyle={{ color: 'hsl(var(--foreground))', fontWeight: 600 }}
                 labelFormatter={(label) => {
-                  const point = chartData.find(d => d.timestamp === label);
-                  return point ? formatTooltip(point.time) : label;
+                  if (typeof label === 'number' && label > 0) {
+                    return formatTooltip(label);
+                  }
+                  return String(label);
                 }}
-                formatter={(rawValue: unknown, rawName: unknown, entry?: any) => {
-                  const name = typeof rawName === 'string' ? rawName : String(rawName);
-                  const value = typeof rawValue === 'number' ? rawValue : null;
-
-                  if (value === null) {
-                    return ['—', name];
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null;
+                  
+                  const point = payload[0]?.payload;
+                  const timestamp = typeof label === 'number' ? label : point?.timestamp;
+                  let concentration = point?.concentration;
+                  const mood = point?.mood;
+                  const displayUnit = medication.therapeuticRange?.unit ?? 'ng/mL';
+                  
+                  if ((concentration === undefined || concentration === null) && timestamp && chartData?.length) {
+                    const closest = chartData.reduce((prev, curr) => {
+                      const prevDiff = Math.abs((prev.timestamp || 0) - timestamp);
+                      const currDiff = Math.abs((curr.timestamp || 0) - timestamp);
+                      return currDiff < prevDiff ? curr : prev;
+                    });
+                    if (closest && Math.abs((closest.timestamp || 0) - timestamp) < 3600000) {
+                      concentration = closest.concentration;
+                    }
                   }
-
-                  if (name === 'Mood') {
-                    const count = entry?.payload?.count;
-                    return [`${value.toFixed(1)}/10`, count ? `${name} (avg ${count})` : name];
-                  }
-
-                  if (name === medication.name) {
-                    const displayUnit = medication.therapeuticRange?.unit ?? 'ng/mL';
-                    const unitLower = displayUnit.toLowerCase();
-                    let displayValue = value;
-                    if (unitLower.includes('mcg') || unitLower.includes('µg')) displayValue = value / 1000; // show in mcg/mL
-                    else if (unitLower.includes('mg/l')) displayValue = value / 1000; // ng/mL -> mg/L
-                    const decimals = unitLower.includes('mcg') || unitLower.includes('µg') ? 3 : 2;
-                    return [`${displayValue.toFixed(decimals)} ${displayUnit}`, medication.name];
-                  }
-
-                  return [String(rawValue ?? '—'), name];
+                  
+                  return (
+                    <div style={{
+                      backgroundColor: 'hsl(var(--card))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px',
+                      padding: '10px 14px',
+                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+                    }}>
+                      <div style={{ fontWeight: 600, marginBottom: '6px', color: 'hsl(var(--foreground))' }}>
+                        {typeof label === 'number' && label > 0 ? formatTooltip(label) : label}
+                      </div>
+                      {concentration !== undefined && concentration !== null && (
+                        <div style={{ color: medication.color || '#8b5cf6', marginBottom: '4px' }}>
+                          {medication.name}: <strong>{concentration.toFixed(2)} {displayUnit}</strong>
+                        </div>
+                      )}
+                      {mood !== undefined && mood !== null && (
+                        <div style={{ color: '#22c55e' }}>
+                          Humor: <strong>{mood.toFixed(1)}/10</strong>
+                        </div>
+                      )}
+                    </div>
+                  );
                 }}
               />
 
-              <Legend wrapperStyle={{ paddingTop: '20px' }} iconType="line" />
+              <Legend
+                wrapperStyle={{ paddingTop: '20px', cursor: 'pointer' }}
+                iconType="line"
+                onClick={(e) => {
+                  if (e && e.dataKey) {
+                    handleLegendClick(e.dataKey as string);
+                  }
+                }}
+                formatter={(value, entry) => {
+                  const dataKey = entry.dataKey as string;
+                  const isHidden = hiddenSeries.has(dataKey);
+                  // Show medication name for concentration, otherwise show the value
+                  const displayName = dataKey === 'concentration' ? medication.name : value;
+                  return (
+                    <span
+                      style={{
+                        color: isHidden ? '#999' : 'inherit',
+                        textDecoration: isHidden ? 'line-through' : 'none'
+                      }}
+                    >
+                      {displayName}
+                    </span>
+                  );
+                }}
+              />
 
               {/* Therapeutic range reference area */}
               {therapeuticRangeNgMl && (
@@ -456,41 +542,44 @@ export default function MedicationConcentrationChart({
                 isAnimationActive={true}
                 animationDuration={800}
                 animationEasing="ease-in-out"
+                hide={hiddenSeries.has('concentration')}
               />
 
               {/* Mood scatter plot overlay */}
-              <Scatter
-                yAxisId="mood"
-                data={moodData}
-                name="Mood points"
-                dataKey="mood"
-                fill={MOOD_COLOR}
-                stroke={MOOD_COLOR}
-                strokeWidth={2}
-                shape="circle"
-                isAnimationActive={true}
-                animationDuration={600}
-                animationEasing="ease-in-out"
-              />
+              {!hiddenSeries.has('mood') && (
+                <Scatter
+                  yAxisId="mood"
+                  data={moodData}
+                  name="Mood points"
+                  dataKey="mood"
+                  fill={MOOD_COLOR}
+                  stroke={MOOD_COLOR}
+                  strokeWidth={2}
+                  shape="circle"
+                  isAnimationActive={true}
+                  animationDuration={600}
+                  animationEasing="ease-in-out"
+                  legendType="none"
+                />
+              )}
 
               {/* Mood interpolated line with smooth curve */}
               <Line
                 yAxisId="mood"
                 data={moodData}
-                type="natural"
+                type="monotone"
                 dataKey="mood"
-                name="Mood curve"
+                name="Mood"
                 stroke={MOOD_COLOR}
                 strokeOpacity={0.95}
                 strokeWidth={3}
-                strokeDasharray="0"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                dot={false}
+                dot={{ r: 4, fill: MOOD_COLOR, strokeWidth: 0 }}
+                activeDot={{ r: 6, fill: MOOD_COLOR, strokeWidth: 2, stroke: '#fff' }}
                 isAnimationActive={true}
                 animationDuration={800}
                 animationEasing="ease-in-out"
                 connectNulls={true}
+                hide={hiddenSeries.has('mood')}
               />
 
               {/* Zoom selection area */}

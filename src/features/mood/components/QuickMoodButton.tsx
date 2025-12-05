@@ -25,7 +25,7 @@ import { toast } from 'sonner';
 import { cn } from '@/shared/utils';
 import { parseLocalDateTime } from '@/shared/utils/date-helpers';
 import { useHaptic } from '@/hooks/use-haptic';
-import { useIsMobile } from '@/hooks/use-mobile';
+import { useIsMobile } from '@/shared/hooks/use-mobile';
 
 // Emoji mapping for mood scores
 const getMoodEmoji = (score: number) => {

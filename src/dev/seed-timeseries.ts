@@ -1,7 +1,7 @@
-import { db } from '@/core/database/db';
 import type { Medication, MedicationDose, MoodEntry, CognitiveTest, Matrix } from '@/shared/types';
 import { generateMedicationSeeds } from '@/core/database/seeds/medications';
 import { v4 as uuidv4 } from 'uuid';
+import { fetchAppData, saveAppData, type AppDataSnapshot } from '@/core/services/app-data-service';
 
 type SeedOptions = {
   days?: number;
@@ -14,12 +14,14 @@ type SeedOptions = {
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
-async function ensureMedications(): Promise<Medication[]> {
-  const meds = await db.medications.toArray();
-  if (meds.length > 0) return meds;
+async function ensureMedications(snapshot: AppDataSnapshot): Promise<Medication[]> {
+  if (snapshot.medications.length > 0) {
+    return snapshot.medications;
+  }
+
   const seed = generateMedicationSeeds();
-  await db.medications.bulkPut(seed);
-  return db.medications.toArray();
+  snapshot.medications = seed;
+  return snapshot.medications;
 }
 
 function* timeSlots(start: number, end: number, perDay: number) {
@@ -32,7 +34,7 @@ function* timeSlots(start: number, end: number, perDay: number) {
   }
 }
 
-async function seedDoses(meds: Medication[], start: number, end: number, perDay: number) {
+function generateDoseSeeds(meds: Medication[], start: number, end: number, perDay: number): MedicationDose[] {
   const doses: MedicationDose[] = [];
   for (const med of meds) {
     for (const ts of timeSlots(start, end, perDay)) {
@@ -43,18 +45,18 @@ async function seedDoses(meds: Medication[], start: number, end: number, perDay:
         medicationId: med.id,
         timestamp: ts,
         doseAmount: Math.max(0.1, +(base + jitter).toFixed(2)),
-        createdAt: ts,
+        createdAt: ts
       });
     }
   }
-  if (doses.length > 0) await db.doses.bulkPut(doses);
+  return doses;
 }
 
-async function seedMood(start: number, end: number, perDay: number) {
+function generateMoodSeeds(start: number, end: number, perDay: number): MoodEntry[] {
   const entries: MoodEntry[] = [];
   for (const ts of timeSlots(start, end, perDay)) {
     const hour = new Date(ts).getHours();
-    const circadian = Math.sin(((hour - 8) / 24) * Math.PI * 2) * 1.0; // pico tarde
+    const circadian = Math.sin(((hour - 8) / 24) * Math.PI * 2) * 1.0;
     const base = 6.5 + circadian;
     const mood = clamp(base + (Math.random() - 0.5) * 1.0, 2, 9.5);
     const anxiety = clamp(6.5 - (mood - 5) + (Math.random() - 0.5) * 1.0, 1, 9);
@@ -68,19 +70,20 @@ async function seedMood(start: number, end: number, perDay: number) {
       energyLevel: +energy.toFixed(1),
       focusLevel: +focus.toFixed(1),
       createdAt: ts,
-      notes: undefined,
+      notes: undefined
     });
   }
-  if (entries.length > 0) await db.moodEntries.bulkPut(entries);
+  return entries;
 }
 
-async function seedCognitive(start: number, end: number) {
+function generateCognitiveSeeds(start: number, end: number): CognitiveTest[] {
   const tests: CognitiveTest[] = [];
   const dayMs = 24 * 3600 * 1000;
   for (let t = start; t <= end; t += 2 * dayMs) {
     const matrices: Matrix[] = Array.from({ length: 4 }).map(() => ({
       matrixId: uuidv4(),
-      svgContent: '<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><rect width="200" height="200" fill="#f3f4f6"/></svg>',
+      svgContent:
+        '<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><rect width="200" height="200" fill="#f3f4f6"/></svg>',
       options: [],
       correctAnswer: 0,
       userAnswer: 0,
@@ -88,11 +91,14 @@ async function seedCognitive(start: number, end: number) {
       wasCorrect: Math.random() > 0.25,
       explanation: '',
       patterns: [],
-      source: 'fallback',
+      source: 'fallback'
     }));
-    const accuracy = matrices.filter(m => m.wasCorrect).length / matrices.length;
+    const accuracy = matrices.filter((m) => m.wasCorrect).length / matrices.length;
     const avgRt = matrices.reduce((s, m) => s + m.responseTime, 0) / matrices.length;
-    const totalScore = matrices.reduce((s, m) => s + (m.wasCorrect ? 1 : 0) * (100 / (1 + Math.log10(Math.max(m.responseTime, 0.1)))), 0);
+    const totalScore = matrices.reduce(
+      (s, m) => s + (m.wasCorrect ? 1 : 0) * (100 / (1 + Math.log10(Math.max(m.responseTime, 0.1)))),
+      0
+    );
     tests.push({
       id: uuidv4(),
       timestamp: t,
@@ -100,20 +106,21 @@ async function seedCognitive(start: number, end: number) {
       totalScore: +totalScore.toFixed(1),
       averageResponseTime: +avgRt.toFixed(1),
       accuracy: +accuracy.toFixed(2),
-      createdAt: t,
+      createdAt: t
     });
   }
-  if (tests.length > 0) await db.cognitiveTests.bulkPut(tests);
+  return tests;
 }
 
 export async function clearDb() {
-  await db.transaction('rw', [db.doses, db.moodEntries, db.cognitiveTests], async () => {
-    await db.doses.clear();
-    await db.moodEntries.clear();
-    await db.cognitiveTests.clear();
-    // mantemos medications; se quiser zerar, remova comentário abaixo
-    // await db.medications.clear();
-  });
+  const snapshot = await fetchAppData();
+  const cleared: AppDataSnapshot = {
+    ...snapshot,
+    doses: [],
+    moodEntries: [],
+    cognitiveTests: []
+  };
+  await saveAppData(cleared);
 }
 
 export async function seedDemoData(opts: SeedOptions = {}) {
@@ -123,20 +130,32 @@ export async function seedDemoData(opts: SeedOptions = {}) {
     dosesPerDay = 1,
     moodPerDay = 3,
     includeCognitive = true,
-    clear = false,
+    clear = false
   } = opts;
 
-  if (clear) await clearDb();
+  const snapshot = await fetchAppData();
+
+  if (clear) {
+    snapshot.doses = [];
+    snapshot.moodEntries = [];
+    snapshot.cognitiveTests = [];
+  }
 
   const end = Date.now();
   const start = end - startDaysAgo * 24 * 3600 * 1000;
 
-  const meds = await ensureMedications();
-  await seedDoses(meds, start, end, dosesPerDay);
-  await seedMood(start, end, moodPerDay);
-  if (includeCognitive) await seedCognitive(start, end);
+  const meds = await ensureMedications(snapshot);
+  const newDoses = generateDoseSeeds(meds, start, end, dosesPerDay);
+  const newMood = generateMoodSeeds(start, end, moodPerDay);
+  const newCognitive = includeCognitive ? generateCognitiveSeeds(start, end) : [];
 
-  localStorage.setItem('app-initialized', 'true');
+  snapshot.doses = [...newDoses, ...snapshot.doses];
+  snapshot.moodEntries = [...newMood, ...snapshot.moodEntries];
+  if (includeCognitive) {
+    snapshot.cognitiveTests = [...newCognitive, ...snapshot.cognitiveTests];
+  }
+
+  await saveAppData(snapshot);
 }
 
 declare global {
@@ -152,4 +171,3 @@ if (typeof window !== 'undefined') {
 }
 
 export default seedDemoData;
-

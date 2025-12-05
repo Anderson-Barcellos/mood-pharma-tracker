@@ -1,7 +1,7 @@
 import { HealthDataProcessor } from './process-health-data';
 import { HealthDataService } from './health-database';
 import { MedicationHealthIntegration } from './medication-health-integration';
-import { db } from '@/core/database/db';
+import { fetchAppData } from '@/core/services/app-data-service';
 import type { Medication, MedicationDose, MoodEntry } from '@/shared/types';
 
 /**
@@ -28,11 +28,7 @@ export class CompleteHealthAnalysis {
       
       // Step 3: Load medication and mood data from main database
       console.log('\n🔗 ETAPA 3: Carregando dados de medicação e humor');
-      const [medications, doses, moodEntries] = await Promise.all([
-        db.medications.toArray(),
-        db.doses.toArray(),
-        db.moodEntries.toArray()
-      ]);
+      const { medications, doses, moodEntries } = await fetchAppData();
       
       console.log(`📈 Encontrados: ${medications.length} medicações, ${doses.length} doses, ${moodEntries.length} registros de humor`);
       

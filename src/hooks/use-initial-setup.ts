@@ -14,31 +14,15 @@ export function useInitialSetup() {
 
   useEffect(() => {
     async function initializeApp() {
-      // Aguardar carregamento inicial
       if (isLoading) return;
 
-      // CRITICAL FIX: Check DB first, then localStorage
-      // Verificar se DB já tem medicações (evitar duplicar seeds)
       if (medications && medications.length > 0) {
-        localStorage.setItem('app-initialized', 'true');
         setIsInitialized(true);
         return;
       }
 
-      // Se DB está vazio mas flag está setada, limpar flag e re-seed
-      const wasInitialized = localStorage.getItem('app-initialized');
-      if (wasInitialized === 'true' && medications.length === 0) {
-        console.warn('[InitialSetup] app-initialized flag set but DB is empty! Clearing flag...');
-        localStorage.removeItem('app-initialized');
-      }
+      if (isSeeding) return;
 
-      // Se flag não está setada e DB está vazio, precisamos fazer seed
-      if (wasInitialized === 'true') {
-        setIsInitialized(true);
-        return;
-      }
-
-      // Primeira vez: popular medicações pessoais
       try {
         setIsSeeding(true);
         const seeds = generateMedicationSeeds();
@@ -47,19 +31,16 @@ export function useInitialSetup() {
           await createMedication(medication);
         }
 
-        localStorage.setItem('app-initialized', 'true');
         setIsInitialized(true);
-        setIsSeeding(false);
-
-        console.log('✅ App initialized with personal medications');
       } catch (error) {
         console.error('Failed to seed medications:', error);
+      } finally {
         setIsSeeding(false);
       }
     }
 
     initializeApp();
-  }, [medications, isLoading, createMedication]);
+  }, [createMedication, isLoading, isSeeding, medications]);
 
   return {
     isInitialized,

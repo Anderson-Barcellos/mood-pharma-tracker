@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Import Test Data</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            color: white;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 600px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            margin-bottom: 30px;
+            font-size: 2em;
+        }
+        .status {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            font-family: monospace;
+        }
+        .success { background: rgba(76, 175, 80, 0.3); }
+        .error { background: rgba(244, 67, 54, 0.3); }
+        button {
+            background: linear-gradient(45deg, #00adad, #8b73bd);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 30px;
+            font-size: 18px;
+            cursor: pointer;
+            margin: 10px;
+            transition: transform 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #00adad;
+        }
+        .stat-label {
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Import Test Data</h1>
+        
+        <div id="status" class="status">
+            Pronto para importar dados de teste...
+        </div>
+        
+        <div id="stats" class="stats" style="display: none;">
+            <div class="stat">
+                <div class="stat-value" id="medCount">0</div>
+                <div class="stat-label">Medicamentos</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="doseCount">0</div>
+                <div class="stat-label">Doses</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="moodCount">0</div>
+                <div class="stat-label">Humor</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="hrCount">0</div>
+                <div class="stat-label">FC</div>
+            </div>
+        </div>
+        
+        <div style="text-align: center; margin-top: 30px;">
+            <button onclick="loadTestData()">📥 Carregar Dados</button>
+            <button onclick="clearData()">🗑️ Limpar Tudo</button>
+            <button onclick="goToApp()">🚀 Ir para App</button>
+        </div>
+    </div>
+
+    <script>
+        async function loadTestData() {
+            const statusEl = document.getElementById('status');
+            const statsEl = document.getElementById('stats');
+            
+            try {
+                statusEl.textContent = '⏳ Carregando dados de teste...';
+                
+                // Buscar dados de teste
+                const response = await fetch('/data/test-app-data.json');
+                const testData = await response.json();
+                
+                // Buscar dados de frequência cardíaca
+                statusEl.textContent = '💓 Carregando dados de frequência cardíaca...';
+                const hrResponse = await fetch('/data/health/heart-rate-summary.json');
+                const hrData = await hrResponse.ok ? await hrResponse.json() : null;
+                
+                statusEl.textContent = '💾 Salvando no IndexedDB...';
+                
+                // Abrir IndexedDB
+                const dbRequest = indexedDB.open('MoodPharmaTrackerDB', 3);
+                
+                dbRequest.onerror = () => {
+                    throw new Error('Erro ao abrir IndexedDB');
+                };
+                
+                dbRequest.onsuccess = async (event) => {
+                    const db = event.target.result;
+                    
+                    // Transação para salvar dados
+                    const transaction = db.transaction(['medications', 'doses', 'moodEntries'], 'readwrite');
+                    
+                    // Adicionar medicamentos
+                    const medicationStore = transaction.objectStore('medications');
+                    for (const med of testData.medications) {
+                        await medicationStore.put(med);
+                    }
+                    
+                    // Adicionar doses
+                    const doseStore = transaction.objectStore('doses');
+                    for (const dose of testData.doses) {
+                        await doseStore.put(dose);
+                    }
+                    
+                    // Adicionar entradas de humor
+                    const moodStore = transaction.objectStore('moodEntries');
+                    for (const mood of testData.moodEntries) {
+                        await moodStore.put(mood);
+                    }
+                    
+                    transaction.oncomplete = () => {
+                        // Salvar dados de FC no localStorage se existirem
+                        if (hrData) {
+                            localStorage.setItem('heartRateData', JSON.stringify(hrData.recentData || []));
+                            localStorage.setItem('heartRateStats', JSON.stringify({
+                                totalRecords: hrData.totalRecords,
+                                avgHeartRate: hrData.avgHeartRate,
+                                dateRange: hrData.dateRange,
+                                contextDistribution: hrData.contextDistribution
+                            }));
+                        }
+                        
+                        statusEl.className = 'status success';
+                        statusEl.textContent = '✅ Dados importados com sucesso!';
+                        
+                        // Mostrar estatísticas
+                        document.getElementById('medCount').textContent = testData.medications.length;
+                        document.getElementById('doseCount').textContent = testData.doses.length;
+                        document.getElementById('moodCount').textContent = testData.moodEntries.length;
+                        document.getElementById('hrCount').textContent = hrData ? hrData.totalRecords.toLocaleString('pt-BR') : '0';
+                        statsEl.style.display = 'grid';
+                        
+                        // Salvar também no localStorage para compatibilidade
+                        localStorage.setItem('hasTestData', 'true');
+                        localStorage.setItem('testDataTimestamp', Date.now().toString());
+                        
+                        if (hrData) {
+                            console.log('💓 Dados de FC carregados:', {
+                                total: hrData.totalRecords,
+                                período: hrData.dateRange,
+                                média: hrData.avgHeartRate + ' bpm'
+                            });
+                        }
+                    };
+                    
+                    transaction.onerror = () => {
+                        throw new Error('Erro na transação: ' + transaction.error);
+                    };
+                };
+                
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = `❌ Erro: ${error.message}`;
+                console.error('Erro ao importar dados:', error);
+            }
+        }
+        
+        async function clearData() {
+            const statusEl = document.getElementById('status');
+            
+            if (!confirm('Tem certeza que deseja limpar todos os dados?')) {
+                return;
+            }
+            
+            try {
+                // Limpar IndexedDB
+                const deleteReq = indexedDB.deleteDatabase('MoodPharmaTrackerDB');
+                
+                deleteReq.onsuccess = () => {
+                    statusEl.className = 'status';
+                    statusEl.textContent = '🗑️ Banco de dados limpo com sucesso!';
+                    document.getElementById('stats').style.display = 'none';
+                    
+                    // Limpar localStorage
+                    localStorage.removeItem('hasTestData');
+                    localStorage.removeItem('testDataTimestamp');
+                };
+                
+                deleteReq.onerror = () => {
+                    throw new Error('Erro ao deletar banco de dados');
+                };
+                
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = `❌ Erro ao limpar: ${error.message}`;
+            }
+        }
+        
+        function goToApp() {
+            window.location.href = '/';
+        }
+        
+        // Auto-carregar se não houver dados
+        window.addEventListener('load', async () => {
+            const hasData = localStorage.getItem('hasTestData');
+            if (!hasData) {
+                setTimeout(() => {
+                    if (confirm('Deseja carregar dados de teste automaticamente?')) {
+                        loadTestData();
+                    }
+                }, 1000);
+            } else {
+                document.getElementById('status').textContent = '✓ Dados de teste já carregados anteriormente';
+                document.getElementById('status').className = 'status success';
+            }
+        });
+    </script>
+</body>
+</html>

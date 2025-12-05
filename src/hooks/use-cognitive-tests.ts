@@ -1,9 +1,7 @@
-import { useCallback } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useCallback, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { db } from '@/core/database/db';
 import type { CognitiveTest } from '@/shared/types';
-import { scheduleServerSync } from '@/core/services/server-sync';
+import { useAppDataSnapshot, useAppDataMutator } from '@/hooks/use-app-data-store';
 
 interface CognitiveTestCreateInput extends Omit<CognitiveTest, 'id' | 'createdAt'> {
   id?: string;
@@ -15,12 +13,13 @@ interface CognitiveTestUpdateInput extends Partial<Omit<CognitiveTest, 'id' | 'c
 }
 
 export function useCognitiveTests() {
-  const queryResult = useLiveQuery(async () => {
-    const records = await db.cognitiveTests.orderBy('timestamp').reverse().toArray();
-    return records ?? [];
-  }, []);
+  const { data, isLoading, isFetching } = useAppDataSnapshot();
+  const { mutateAppData } = useAppDataMutator();
+  const sourceTests = data?.cognitiveTests ?? [];
 
-  const cognitiveTests = queryResult ?? [];
+  const cognitiveTests = useMemo(() => {
+    return [...sourceTests].sort((a, b) => b.timestamp - a.timestamp);
+  }, [sourceTests]);
 
   const createCognitiveTest = useCallback(async (payload: CognitiveTestCreateInput) => {
     const timestamp = payload.timestamp ?? Date.now();
@@ -34,26 +33,40 @@ export function useCognitiveTests() {
       createdAt: payload.createdAt ?? timestamp
     };
 
-    await db.cognitiveTests.put(record);
-    scheduleServerSync('cognitive:create');
+    await mutateAppData((snapshot) => ({
+      ...snapshot,
+      cognitiveTests: [record, ...snapshot.cognitiveTests]
+    }));
     return record;
-  }, []);
+  }, [mutateAppData]);
 
   const updateCognitiveTest = useCallback(async (id: string, updates: CognitiveTestUpdateInput) => {
-    await db.cognitiveTests.update(id, updates as any);
-    scheduleServerSync('cognitive:update');
-  }, []);
+    if (!sourceTests.some((test) => test.id === id)) {
+      return;
+    }
+
+    await mutateAppData((snapshot) => ({
+      ...snapshot,
+      cognitiveTests: snapshot.cognitiveTests.map((test) => (test.id === id ? { ...test, ...updates } : test))
+    }));
+  }, [mutateAppData, sourceTests]);
 
   const deleteCognitiveTest = useCallback(async (id: string) => {
-    await db.cognitiveTests.delete(id);
-    scheduleServerSync('cognitive:delete');
-  }, []);
+    if (!sourceTests.some((test) => test.id === id)) {
+      return;
+    }
+
+    await mutateAppData((snapshot) => ({
+      ...snapshot,
+      cognitiveTests: snapshot.cognitiveTests.filter((test) => test.id !== id)
+    }));
+  }, [mutateAppData, sourceTests]);
 
   return {
     cognitiveTests,
     createCognitiveTest,
     updateCognitiveTest,
     deleteCognitiveTest,
-    isLoading: queryResult === undefined
+    isLoading: (!data && (isLoading || isFetching))
   } as const;
 }

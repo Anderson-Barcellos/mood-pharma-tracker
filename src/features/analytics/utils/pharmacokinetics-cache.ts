@@ -167,15 +167,16 @@ class PharmacokineticCache {
     }
 
     const keysToDelete: string[] = [];
+    const medPattern = `:${medicationId}:`;
 
     this.concentrationCache.forEach((_, key) => {
-      if (key.startsWith(medicationId) || key.startsWith(`curve:${medicationId}`)) {
+      if (key.includes(medPattern)) {
         keysToDelete.push(key);
       }
     });
 
     this.curveCache.forEach((_, key) => {
-      if (key.startsWith(medicationId) || key.startsWith(`curve:${medicationId}`)) {
+      if (key.includes(medPattern)) {
         keysToDelete.push(key);
       }
     });

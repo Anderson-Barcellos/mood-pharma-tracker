@@ -211,13 +211,13 @@ export class CorrelationEngine {
       moodEntries.reduce((sum, entry) => sum + entry.moodScore, 0) / moodEntries.length
     );
     avgMood.anxietyLevel = Math.round(
-      moodEntries.reduce((sum, entry) => sum + entry.anxietyLevel, 0) / moodEntries.length
+      moodEntries.reduce((sum, entry) => sum + (entry.anxietyLevel ?? 0), 0) / moodEntries.length
     );
     avgMood.energyLevel = Math.round(
-      moodEntries.reduce((sum, entry) => sum + entry.energyLevel, 0) / moodEntries.length
+      moodEntries.reduce((sum, entry) => sum + (entry.energyLevel ?? 0), 0) / moodEntries.length
     );
     avgMood.focusLevel = Math.round(
-      moodEntries.reduce((sum, entry) => sum + entry.focusLevel, 0) / moodEntries.length
+      moodEntries.reduce((sum, entry) => sum + (entry.focusLevel ?? 0), 0) / moodEntries.length
     );
 
     return avgMood;

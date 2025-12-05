@@ -160,13 +160,18 @@
     }
   }
 
-  /* Charts and graphs adjustments */
+  /* Charts and graphs adjustments - avoid !important to preserve interactivity */
   .recharts-wrapper {
-    font-size: 0.75rem !important;
+    font-size: 0.75rem;
   }
 
   .recharts-text {
-    font-size: 0.625rem !important;
+    font-size: 0.625rem;
+  }
+
+  /* Preserve chart interactivity */
+  .recharts-surface {
+    overflow: visible;
   }
 
   /* Modal and dialog compactness */
@@ -185,11 +190,11 @@
   --radius: 0.5rem;
 }
 
-/* Reduce line heights for density */
-* {
-  line-height: 1.3 !important;
+/* Reduce line heights for density - EXCLUDE SVG elements for charts */
+*:not(svg):not(svg *) {
+  line-height: 1.3;
 }
 
 p {
-  line-height: 1.4 !important;
+  line-height: 1.4;
 }

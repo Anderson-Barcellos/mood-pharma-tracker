@@ -7,6 +7,7 @@ const projectRoot = process.env.PROJECT_ROOT || import.meta.dirname
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: '/mood/',
   plugins: [react(), tailwindcss()],
   envPrefix: ['VITE_', 'GEMINI_'],
   resolve: {
@@ -25,7 +26,7 @@ export default defineConfig({
       '145.223.26.62'
     ],
     hmr: {
-      clientPort: 8116,
+      clientPort: 8114,
       protocol: 'wss',
       host: 'ultrassom.ai',
     },
@@ -38,7 +39,7 @@ export default defineConfig({
       },
       // Proxy other API requests to main backend server
       '/api': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:8113',
         changeOrigin: true,
         secure: false
       }
@@ -62,7 +63,7 @@ export default defineConfig({
           'vendor-charts': ['recharts', 'd3'],
           'vendor-forms': ['react-hook-form', '@hookform/resolvers', 'zod'],
           'vendor-motion': ['framer-motion'],
-          'vendor-db': ['dexie', 'dexie-react-hooks'],
+          'vendor-db': ['dexie'],
         },
         // Optimize chunk file names for caching
         chunkFileNames: 'assets/js/[name]-[hash].js',
@@ -83,7 +84,6 @@ export default defineConfig({
       'react',
       'react-dom',
       'dexie',
-      'dexie-react-hooks',
       'date-fns',
       'framer-motion',
     ],
