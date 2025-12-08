@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Button } from '@/shared/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
-import { Plus, Pill, Smiley, Brain, ChartLineUp, ChartLine, Fire, Heart } from '@phosphor-icons/react';
+import { Plus, Pill, Smiley, Brain, ChartLineUp, ChartLine, Fire, Heart, ArrowSquareOut } from '@phosphor-icons/react';
 import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from '@/shared/types';
 import type { NavigationTab } from '@/shared/layouts/AppLayout';
 import DoseLogger from '@/features/doses/components/DoseLogger';
@@ -81,17 +81,20 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
         </Card>
 
         <Card
-          className="p-2 sm:p-3 cursor-pointer hover:bg-accent/50 transition-colors"
-          onClick={() => onNavigate?.('cognitive')}
+          className="p-2 sm:p-3 cursor-pointer hover:bg-accent/50 transition-colors group"
+          onClick={() => window.open('https://ultrassom.ai/raven', '_blank', 'noopener,noreferrer')}
         >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 px-2 pt-2">
-            <CardTitle className="text-xs sm:text-sm font-medium">Cognição</CardTitle>
+            <CardTitle className="text-xs sm:text-sm font-medium flex items-center gap-1">
+              Raven Test
+              <ArrowSquareOut className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+            </CardTitle>
             <Brain className="h-3 w-3 sm:h-4 sm:w-4 text-blue-500" />
           </CardHeader>
           <CardContent className="px-2 pt-0 pb-2">
             <div className="text-lg sm:text-xl font-bold">{cognitiveTests.length}</div>
             <p className="text-xs text-muted-foreground">
-              {latestTest ? `Último: ${latestTest.totalScore.toFixed(1)}` : 'Sem testes'}
+              {latestTest ? `Último: ${latestTest.totalScore.toFixed(1)}` : 'Abrir teste'}
             </p>
           </CardContent>
         </Card>

@@ -11,7 +11,6 @@ import DashboardPage from '@/features/analytics/pages/DashboardPage';
 import MedicationsPage from '@/features/medications/pages/MedicationsPage';
 import MoodPage from '@/features/mood/pages/MoodPage';
 import CognitivePage from '@/features/cognitive/pages/CognitivePage';
-import AnalyticsPage from '@/features/analytics/pages/AnalyticsPage';
 import { PWAInstallPrompt } from '@/shared/components/PWAInstallPrompt';
 
 function App() {
@@ -52,15 +51,6 @@ function App() {
         return <MoodPage />;
       case 'cognitive':
         return <CognitivePage />;
-      case 'analytics':
-        return (
-          <AnalyticsPage
-            medications={medications}
-            doses={doses}
-            moodEntries={moodEntries}
-            cognitiveTests={cognitiveTests}
-          />
-        );
       default:
         return (
           <DashboardPage

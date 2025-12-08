@@ -7,6 +7,7 @@ import {
   CaretLeft,
   CaretRight,
   X,
+  ArrowSquareOut,
 } from '@phosphor-icons/react';
 import { motion } from 'framer-motion';
 import { cn } from '@/shared/utils';
@@ -25,6 +26,7 @@ interface NavItem {
   label: string;
   icon: React.ElementType;
   description: string;
+  externalUrl?: string;
 }
 
 const navigationItems: NavItem[] = [
@@ -47,16 +49,11 @@ const navigationItems: NavItem[] = [
     description: 'Manage your meds',
   },
   {
-    id: 'analytics',
-    label: 'Analytics',
-    icon: ChartLine,
-    description: 'Deep insights & charts',
-  },
-  {
     id: 'cognitive',
-    label: 'Cognitive',
+    label: 'Raven Test',
     icon: Brain,
-    description: 'Cognitive assessments',
+    description: 'Teste cognitivo externo',
+    externalUrl: 'https://ultrassom.ai/raven',
   },
 ];
 
@@ -67,9 +64,13 @@ export function Sidebar({
   onCollapse,
   onClose,
 }: SidebarProps) {
-  const handleNavClick = (tab: NavigationTab) => {
-    onTabChange(tab);
-    if (onClose) onClose(); // Close mobile sidebar after navigation
+  const handleNavClick = (tab: NavigationTab, externalUrl?: string) => {
+    if (externalUrl) {
+      window.open(externalUrl, '_blank', 'noopener,noreferrer');
+    } else {
+      onTabChange(tab);
+    }
+    if (onClose) onClose();
   };
 
   return (
@@ -147,7 +148,7 @@ export function Sidebar({
           return (
             <button
               key={item.id}
-              onClick={() => handleNavClick(item.id)}
+              onClick={() => handleNavClick(item.id, item.externalUrl)}
               className={cn(
                 'w-full flex items-center gap-3 px-4 py-3 rounded-lg',
                 'transition-all duration-200 ease-in-out',
@@ -196,8 +197,9 @@ export function Sidebar({
                   >
                     {item.label}
                   </div>
-                  <div className="text-xs text-muted-foreground/70">
+                  <div className="text-xs text-muted-foreground/70 flex items-center gap-1">
                     {item.description}
+                    {item.externalUrl && <ArrowSquareOut className="w-3 h-3" />}
                   </div>
                 </motion.div>
               )}

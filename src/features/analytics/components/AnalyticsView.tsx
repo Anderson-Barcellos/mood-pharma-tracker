@@ -7,6 +7,7 @@ import type { Medication, MedicationDose, MoodEntry, CognitiveTest } from '@/sha
 import { Brain, Pill, Smiley, TrendUp, TrendDown, Clock } from '@phosphor-icons/react';
 import { cn } from '@/shared/utils';
 import PKChart from './PKChart';
+import LagCorrelationChart from './LagCorrelationChart';
 
 interface AnalyticsViewProps {
   medications: Medication[];
@@ -40,6 +41,18 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
 
     const moodTrend = avgMood !== null && prevAvgMood !== null ? avgMood - prevAvgMood : null;
 
+    const cognitiveMoods = periodMoods.filter(m => m.cognitiveScore !== undefined && m.cognitiveScore !== null);
+    const avgCognitive = cognitiveMoods.length > 0
+      ? cognitiveMoods.reduce((sum, m) => sum + (m.cognitiveScore ?? 0), 0) / cognitiveMoods.length
+      : null;
+
+    const prevCognitiveMoods = previousMoods.filter(m => m.cognitiveScore !== undefined && m.cognitiveScore !== null);
+    const prevAvgCognitive = prevCognitiveMoods.length > 0
+      ? prevCognitiveMoods.reduce((sum, m) => sum + (m.cognitiveScore ?? 0), 0) / prevCognitiveMoods.length
+      : null;
+
+    const cognitiveTrend = avgCognitive !== null && prevAvgCognitive !== null ? avgCognitive - prevAvgCognitive : null;
+
     const periodDoses = selectedMedication 
       ? doses.filter(d => d.medicationId === selectedMedication.id && d.timestamp >= startTime)
       : [];
@@ -55,6 +68,9 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
     return {
       avgMood,
       moodTrend,
+      avgCognitive,
+      cognitiveTrend,
+      cognitiveCount: cognitiveMoods.length,
       moodEntryCount: periodMoods.length,
       doseCount: periodDoses.length,
       hoursSinceLastDose
@@ -126,9 +142,30 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
               <p className="text-2xl font-bold">{stats.moodEntryCount}</p>
               <p className="text-xs text-muted-foreground mt-1">no periodo</p>
             </div>
-            <Brain className="w-8 h-8 text-purple-500" />
+            <Smiley className="w-8 h-8 text-green-500" />
           </div>
         </GlassCard>
+
+        {stats.avgCognitive !== null && (
+          <GlassCard className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Cognição Média</p>
+                <p className="text-2xl font-bold">{stats.avgCognitive.toFixed(1)}</p>
+                {stats.cognitiveTrend !== null && (
+                  <div className={cn(
+                    "flex items-center gap-1 text-xs mt-1",
+                    stats.cognitiveTrend > 0 ? "text-green-500" : stats.cognitiveTrend < 0 ? "text-red-500" : "text-muted-foreground"
+                  )}>
+                    {stats.cognitiveTrend > 0 ? <TrendUp className="w-3 h-3" /> : stats.cognitiveTrend < 0 ? <TrendDown className="w-3 h-3" /> : null}
+                    {stats.cognitiveTrend > 0 ? '+' : ''}{stats.cognitiveTrend.toFixed(1)} vs anterior
+                  </div>
+                )}
+              </div>
+              <Brain className="w-8 h-8 text-purple-500" />
+            </div>
+          </GlassCard>
+        )}
 
         {selectedMedication && (
           <>
@@ -160,12 +197,21 @@ export default function AnalyticsView({ medications, doses, moodEntries, cogniti
       </div>
 
       {selectedMedication ? (
-        <PKChart
-          medication={selectedMedication}
-          doses={doses}
-          moodEntries={moodEntries}
-          daysRange={dayRange}
-        />
+        <>
+          <PKChart
+            medication={selectedMedication}
+            doses={doses}
+            moodEntries={moodEntries}
+            daysRange={dayRange}
+          />
+          
+          <LagCorrelationChart
+            medication={selectedMedication}
+            doses={doses}
+            moodEntries={moodEntries}
+            maxLagHours={Math.min(12, Math.ceil(selectedMedication.halfLife * 2))}
+          />
+        </>
       ) : (
         <GlassCard className="p-12 text-center">
           <Pill className="w-16 h-16 mx-auto mb-4 text-muted-foreground opacity-50" />

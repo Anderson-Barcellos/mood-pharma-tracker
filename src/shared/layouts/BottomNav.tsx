@@ -1,5 +1,5 @@
 import { NavigationTab } from './AppLayout';
-import { ChartLine, Pill, Smiley, Brain } from '@phosphor-icons/react';
+import { ChartLine, Pill, Smiley, Brain, ArrowSquareOut } from '@phosphor-icons/react';
 import { motion } from 'framer-motion';
 import { cn } from '@/shared/utils';
 
@@ -12,6 +12,7 @@ interface NavItem {
   id: NavigationTab;
   label: string;
   icon: React.ElementType;
+  externalUrl?: string;
 }
 
 // Mobile navigation items (now includes Cognitive!)
@@ -33,13 +34,9 @@ const mobileNavItems: NavItem[] = [
   },
   {
     id: 'cognitive',
-    label: 'Cognitive',
+    label: 'Raven',
     icon: Brain,
-  },
-  {
-    id: 'analytics',
-    label: 'Analytics',
-    icon: ChartLine,
+    externalUrl: 'https://ultrassom.ai/raven',
   },
 ];
 
@@ -57,15 +54,23 @@ export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
 
         {/* Safe area padding for iOS notch */}
         <div className="relative pb-safe">
-          <div className="grid grid-cols-5 gap-0 px-1 pt-2 pb-3">
+          <div className="grid grid-cols-4 gap-0 px-1 pt-2 pb-3">
             {mobileNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
 
+              const handleClick = () => {
+                if (item.externalUrl) {
+                  window.open(item.externalUrl, '_blank', 'noopener,noreferrer');
+                } else {
+                  onTabChange(item.id);
+                }
+              };
+
               return (
                 <button
                   key={item.id}
-                  onClick={() => onTabChange(item.id)}
+                  onClick={handleClick}
                   className={cn(
                     'flex flex-col items-center justify-center gap-1 py-2 px-1.5 rounded-lg',
                     'transition-all duration-200 ease-in-out',
@@ -115,6 +120,11 @@ export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
                   >
                     {item.label}
                   </span>
+
+                  {/* External link indicator */}
+                  {item.externalUrl && (
+                    <ArrowSquareOut className="absolute top-1 right-1 w-3 h-3 text-muted-foreground" />
+                  )}
                 </button>
               );
             })}

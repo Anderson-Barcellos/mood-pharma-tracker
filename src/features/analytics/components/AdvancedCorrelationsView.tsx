@@ -8,13 +8,15 @@ import {
   Info,
   TrendUp,
   TrendDown,
-  Lightning
+  Lightning,
+  Clock
 } from '@phosphor-icons/react';
 import { cn } from '@/shared/utils';
 import type { Medication, MedicationDose, MoodEntry } from '@/shared/types';
 import { StatisticsEngine } from '@/features/analytics/utils/statistics-engine';
 import { calculateConcentration } from '@/features/analytics/utils/pharmacokinetics';
 import CorrelationMatrix from './CorrelationMatrix';
+import LagCorrelationChart from './LagCorrelationChart';
 import { TimeframeSelector, type TimeframePeriod, getTimeframeDays } from '@/shared/components/TimeframeSelector';
 
 interface AdvancedCorrelationsViewProps {
@@ -229,9 +231,13 @@ export default function AdvancedCorrelationsView({
       )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="overview">Visao Geral</TabsTrigger>
-          <TabsTrigger value="matrix">Matriz de Correlacoes</TabsTrigger>
+          <TabsTrigger value="temporal" className="flex items-center gap-1">
+            <Clock className="w-3 h-3" />
+            <span className="hidden sm:inline">Temporal</span>
+          </TabsTrigger>
+          <TabsTrigger value="matrix">Matriz</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -268,6 +274,39 @@ export default function AdvancedCorrelationsView({
               <h3 className="text-lg font-medium mb-2">Dados Insuficientes</h3>
               <p className="text-muted-foreground">
                 Registre mais dados de humor e doses para visualizar correlacoes.
+              </p>
+            </GlassCard>
+          )}
+        </TabsContent>
+
+        <TabsContent value="temporal" className="space-y-6 mt-6">
+          {medications.length > 0 ? (
+            <div className="space-y-6">
+              <GlassCard className="p-4">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Info className="w-4 h-4" />
+                  <span>
+                    Analise temporal mostra como o humor responde a concentracao do medicamento ao longo do tempo.
+                    Lag positivo = humor responde apos o pico. Lag negativo = humor antecede.
+                  </span>
+                </div>
+              </GlassCard>
+              {medications.map(medication => (
+                <LagCorrelationChart
+                  key={medication.id}
+                  medication={medication}
+                  doses={doses}
+                  moodEntries={moodEntries}
+                  maxLagHours={Math.min(12, Math.ceil(medication.halfLife * 2))}
+                />
+              ))}
+            </div>
+          ) : (
+            <GlassCard className="p-12 text-center">
+              <Clock className="w-16 h-16 mx-auto mb-4 text-muted-foreground opacity-50" />
+              <h3 className="text-lg font-medium mb-2">Sem Medicamentos</h3>
+              <p className="text-muted-foreground">
+                Adicione medicamentos para visualizar analise temporal.
               </p>
             </GlassCard>
           )}

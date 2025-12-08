@@ -1,4 +1,4 @@
-import { useMemo, useRef, useCallback } from 'react';
+import { useMemo, useRef, useCallback, useState } from 'react';
 import {
   ComposedChart,
   Area,
@@ -15,7 +15,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Button } from '@/shared/ui/button';
-import { Download } from '@phosphor-icons/react';
+import { Download, Eye, EyeSlash } from '@phosphor-icons/react';
 import type { Medication, MedicationDose, MoodEntry } from '@/shared/types';
 import { calculateConcentration } from '@/features/analytics/utils/pharmacokinetics';
 
@@ -25,17 +25,24 @@ interface PKChartProps {
   moodEntries: MoodEntry[];
   daysRange?: number;
   bodyWeight?: number;
+  futureHours?: number;
+  showTherapeuticRange?: boolean;
 }
 
 interface ChartDataPoint {
   timestamp: number;
   concentration: number | null;
+  concentrationProjected: number | null;
   mood: number | null;
+  cognitive: number | null;
   moodTimestamp: number | null;
+  moodCount?: number;
   formattedTime: string;
+  isFuture: boolean;
 }
 
 const MOOD_COLOR = '#22c55e';
+const COGNITIVE_COLOR = '#a855f7';
 const POINTS_PER_DAY = 48;
 
 export default function PKChart({
@@ -44,20 +51,29 @@ export default function PKChart({
   moodEntries,
   daysRange = 7,
   bodyWeight = 70,
+  futureHours = 12,
+  showTherapeuticRange = true,
 }: PKChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const color = medication.color ?? '#8b5cf6';
+  const [showTherapeutic, setShowTherapeutic] = useState(showTherapeuticRange);
 
-  const { chartData, concentrationDomain, therapeuticRange } = useMemo(() => {
+  const { chartData, concentrationDomain, therapeuticRange, nowTimestamp } = useMemo(() => {
     const medDoses = doses.filter(d => d.medicationId === medication.id);
     
-    const allTimestamps = [
-      ...medDoses.map(d => d.timestamp),
-      ...moodEntries.map(m => m.timestamp),
-    ];
+    const doseTimestamps = medDoses.map(d => d.timestamp);
+    const moodTimestamps = moodEntries.map(m => m.timestamp);
+    const lastDose = doseTimestamps.length > 0 ? Math.max(...doseTimestamps) : 0;
+    const lastMood = moodTimestamps.length > 0 ? Math.max(...moodTimestamps) : 0;
     
-    const endTime = allTimestamps.length > 0 ? Math.max(...allTimestamps) : Date.now();
+    const futureExtension = futureHours * 60 * 60 * 1000;
+    const endTime = Math.max(
+      lastMood,
+      lastDose + futureExtension,
+      Date.now()
+    );
     const startTime = endTime - (daysRange * 24 * 60 * 60 * 1000);
+    const nowTimestamp = Date.now();
     
     const totalPoints = daysRange * POINTS_PER_DAY;
     const interval = (endTime - startTime) / totalPoints;
@@ -71,13 +87,56 @@ export default function PKChart({
       .filter(m => m.timestamp >= startTime && m.timestamp <= endTime)
       .sort((a, b) => a.timestamp - b.timestamp);
     
-    const moodMap = new Map<number, MoodEntry>();
-    for (const mood of relevantMoods) {
-      const bucketIndex = Math.round((mood.timestamp - startTime) / interval);
-      const bucketTime = startTime + (bucketIndex * interval);
-      if (!moodMap.has(bucketTime) || 
-          Math.abs(mood.timestamp - bucketTime) < Math.abs(moodMap.get(bucketTime)!.timestamp - bucketTime)) {
-        moodMap.set(bucketTime, mood);
+    const shouldAggregate = daysRange > 3;
+    
+    interface AggregatedMood {
+      moodScore: number;
+      cognitiveScore: number | null;
+      timestamp: number;
+      count: number;
+    }
+    
+    const moodMap = new Map<number, AggregatedMood>();
+    
+    if (shouldAggregate) {
+      const dayMap = new Map<string, MoodEntry[]>();
+      for (const mood of relevantMoods) {
+        const dayKey = format(mood.timestamp, 'yyyy-MM-dd');
+        if (!dayMap.has(dayKey)) dayMap.set(dayKey, []);
+        dayMap.get(dayKey)!.push(mood);
+      }
+      
+      for (const [_dayKey, moods] of dayMap) {
+        const avgMood = moods.reduce((sum, m) => sum + m.moodScore, 0) / moods.length;
+        const cogMoods = moods.filter(m => m.cognitiveScore != null);
+        const avgCognitive = cogMoods.length > 0 
+          ? cogMoods.reduce((sum, m) => sum + (m.cognitiveScore ?? 0), 0) / cogMoods.length 
+          : null;
+        const midTimestamp = moods[Math.floor(moods.length / 2)].timestamp;
+        
+        const bucketIndex = Math.round((midTimestamp - startTime) / interval);
+        const bucketTime = startTime + (bucketIndex * interval);
+        
+        moodMap.set(bucketTime, {
+          moodScore: avgMood,
+          cognitiveScore: avgCognitive,
+          timestamp: midTimestamp,
+          count: moods.length,
+        });
+      }
+    } else {
+      for (const mood of relevantMoods) {
+        const bucketIndex = Math.round((mood.timestamp - startTime) / interval);
+        const bucketTime = startTime + (bucketIndex * interval);
+        if (!moodMap.has(bucketTime) || 
+            Math.abs(mood.timestamp - bucketTime) < Math.abs(moodMap.get(bucketTime)!.timestamp - bucketTime)) {
+          moodMap.set(bucketTime, {
+            moodScore: mood.moodScore,
+            cognitiveScore: mood.cognitiveScore ?? null,
+            timestamp: mood.timestamp,
+            count: 1,
+          });
+        }
       }
     }
     
@@ -101,27 +160,37 @@ export default function PKChart({
       data.push({
         timestamp,
         concentration,
+        concentrationProjected: null,
         mood: moodEntry?.moodScore ?? null,
+        cognitive: moodEntry?.cognitiveScore ?? null,
         moodTimestamp: moodEntry?.timestamp ?? null,
+        moodCount: moodEntry?.count,
         formattedTime: format(timestamp, 'dd/MM HH:mm', { locale: ptBR }),
+        isFuture: timestamp > nowTimestamp,
       });
     }
     
-    for (const mood of relevantMoods) {
-      const existingPoint = data.find(d => 
-        d.moodTimestamp === mood.timestamp || 
-        Math.abs(d.timestamp - mood.timestamp) < interval * 0.5
-      );
-      
-      if (!existingPoint) {
-        const conc = calculateConcentration(medication, relevantDoses, mood.timestamp, bodyWeight);
-        data.push({
-          timestamp: mood.timestamp,
-          concentration: conc > 0.01 ? conc : null,
-          mood: mood.moodScore,
-          moodTimestamp: mood.timestamp,
-          formattedTime: format(mood.timestamp, 'dd/MM HH:mm', { locale: ptBR }),
-        });
+    if (!shouldAggregate) {
+      for (const mood of relevantMoods) {
+        const existingPoint = data.find(d => 
+          d.moodTimestamp === mood.timestamp || 
+          Math.abs(d.timestamp - mood.timestamp) < interval * 0.5
+        );
+        
+        if (!existingPoint) {
+          const conc = calculateConcentration(medication, relevantDoses, mood.timestamp, bodyWeight);
+          data.push({
+            timestamp: mood.timestamp,
+            concentration: conc > 0.01 ? conc : null,
+            concentrationProjected: null,
+            mood: mood.moodScore,
+            cognitive: mood.cognitiveScore ?? null,
+            moodTimestamp: mood.timestamp,
+            moodCount: 1,
+            formattedTime: format(mood.timestamp, 'dd/MM HH:mm', { locale: ptBR }),
+            isFuture: mood.timestamp > nowTimestamp,
+          });
+        }
       }
     }
     
@@ -151,8 +220,9 @@ export default function PKChart({
       chartData: data,
       concentrationDomain: concDomain,
       therapeuticRange: therRange,
+      nowTimestamp,
     };
-  }, [medication, doses, moodEntries, daysRange, bodyWeight]);
+  }, [medication, doses, moodEntries, daysRange, bodyWeight, futureHours]);
 
   const formatXAxis = useCallback((timestamp: number) => {
     if (!timestamp || !Number.isFinite(timestamp)) return '';
@@ -172,11 +242,14 @@ export default function PKChart({
       ? format(point.moodTimestamp, "dd MMM 'às' HH:mm", { locale: ptBR })
       : format(point.timestamp, "dd MMM 'às' HH:mm", { locale: ptBR });
     
+    const concValue = point.concentration ?? point.concentrationProjected;
+    const isProjected = point.isFuture && point.concentrationProjected !== null;
+    
     const getStatus = () => {
-      if (!therapeuticRange || point.concentration === null) return null;
-      if (point.concentration < therapeuticRange.min) 
+      if (!therapeuticRange || concValue === null) return null;
+      if (concValue < therapeuticRange.min) 
         return { text: 'Subterapêutico', color: '#f59e0b' };
-      if (point.concentration > therapeuticRange.max) 
+      if (concValue > therapeuticRange.max) 
         return { text: 'Acima da faixa', color: '#ef4444' };
       return { text: 'Na faixa terapêutica', color: '#22c55e' };
     };
@@ -185,11 +258,15 @@ export default function PKChart({
     
     return (
       <div className="bg-card border rounded-lg p-3 shadow-lg">
-        <div className="font-semibold mb-2">{displayTime}</div>
-        {point.concentration !== null && (
+        <div className="font-semibold mb-2">
+          {displayTime}
+          {isProjected && <span className="text-xs text-muted-foreground ml-2">(Projeção)</span>}
+        </div>
+        {concValue !== null && (
           <div className="mb-1">
-            <span style={{ color }}>
-              {medication.name}: <strong>{point.concentration.toFixed(1)} ng/mL</strong>
+            <span style={{ color, opacity: isProjected ? 0.7 : 1 }}>
+              {medication.name}: <strong>{concValue.toFixed(1)} ng/mL</strong>
+              {isProjected && <span className="text-xs ml-1">*</span>}
             </span>
             {status && (
               <div className="text-xs mt-0.5" style={{ color: status.color }}>
@@ -200,12 +277,22 @@ export default function PKChart({
         )}
         {point.mood !== null && (
           <div style={{ color: MOOD_COLOR }}>
-            Humor: <strong>{point.mood}/10</strong>
-            {point.moodTimestamp && (
+            Humor: <strong>{point.mood.toFixed(1)}/10</strong>
+            {point.moodCount && point.moodCount > 1 && (
+              <span className="text-xs opacity-70 ml-1">
+                (média de {point.moodCount} registros)
+              </span>
+            )}
+            {point.moodCount === 1 && point.moodTimestamp && (
               <span className="text-xs opacity-70 ml-1">
                 ({format(point.moodTimestamp, 'HH:mm')})
               </span>
             )}
+          </div>
+        )}
+        {point.cognitive !== null && (
+          <div style={{ color: COGNITIVE_COLOR }}>
+            Cognição: <strong>{point.cognitive.toFixed(1)}/10</strong>
           </div>
         )}
       </div>
@@ -251,9 +338,21 @@ export default function PKChart({
           <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
           {medication.name}
         </CardTitle>
-        <Button variant="ghost" size="sm" onClick={exportChart}>
-          <Download className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-1">
+          {therapeuticRange && (
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => setShowTherapeutic(!showTherapeutic)}
+              title={showTherapeutic ? 'Ocultar faixa terapêutica' : 'Mostrar faixa terapêutica'}
+            >
+              {showTherapeutic ? <Eye className="h-4 w-4" /> : <EyeSlash className="h-4 w-4" />}
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" onClick={exportChart} title="Exportar gráfico">
+            <Download className="h-4 w-4" />
+          </Button>
+        </div>
       </CardHeader>
       
       <CardContent>
@@ -264,6 +363,10 @@ export default function PKChart({
                 <linearGradient id={`gradient-${medication.id}`} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={color} stopOpacity={0.3} />
                   <stop offset="95%" stopColor={color} stopOpacity={0.02} />
+                </linearGradient>
+                <linearGradient id={`gradient-projected-${medication.id}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={color} stopOpacity={0.15} />
+                  <stop offset="95%" stopColor={color} stopOpacity={0.01} />
                 </linearGradient>
               </defs>
               
@@ -301,7 +404,7 @@ export default function PKChart({
                 formatter={(value) => <span className="text-xs">{value}</span>}
               />
               
-              {therapeuticRange && (
+              {showTherapeutic && therapeuticRange && (
                 <>
                   <ReferenceLine
                     yAxisId="conc"
@@ -320,6 +423,7 @@ export default function PKChart({
                 </>
               )}
               
+              
               <Area
                 yAxisId="conc"
                 type="monotoneX"
@@ -333,6 +437,7 @@ export default function PKChart({
                 activeDot={{ r: 4, fill: color, stroke: '#fff', strokeWidth: 2 }}
               />
               
+              
               <Line
                 yAxisId="mood"
                 type="monotoneX"
@@ -344,6 +449,21 @@ export default function PKChart({
                 dot={{ r: 4, fill: MOOD_COLOR }}
                 activeDot={{ r: 6, fill: MOOD_COLOR, stroke: '#fff', strokeWidth: 2 }}
               />
+              
+              <Line
+                yAxisId="mood"
+                type="monotoneX"
+                dataKey="cognitive"
+                name="Cognição"
+                stroke={COGNITIVE_COLOR}
+                strokeWidth={2}
+                strokeDasharray="5 5"
+                connectNulls
+                dot={{ r: 3, fill: COGNITIVE_COLOR }}
+                activeDot={{ r: 5, fill: COGNITIVE_COLOR, stroke: '#fff', strokeWidth: 2 }}
+              />
+              
+              {/* Brush temporariamente desabilitado para debug */}
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -360,7 +480,7 @@ export default function PKChart({
           </p>
         )}
         
-        {therapeuticRange && (
+        {showTherapeutic && therapeuticRange && (
           <div className="flex items-center gap-2 mt-3 pt-3 border-t text-xs text-muted-foreground">
             <div className="w-6 h-0.5" style={{ backgroundColor: color, opacity: 0.5 }} />
             <span>Faixa terapêutica: {therapeuticRange.min}-{therapeuticRange.max} ng/mL</span>

@@ -6,7 +6,7 @@ import { QuickDoseFAB } from '@/shared/components/QuickDoseFAB';
 import { AuthStatus } from '@/shared/components/AuthStatus';
 import { motion, AnimatePresence } from 'framer-motion';
 
-export type NavigationTab = 'dashboard' | 'medications' | 'mood' | 'cognitive' | 'analytics';
+export type NavigationTab = 'dashboard' | 'medications' | 'mood' | 'cognitive';
 
 interface AppLayoutProps {
   children: ReactNode;
