@@ -1,15 +1,16 @@
 import { useState, useMemo } from 'react';
 import { GlassCard } from '@/shared/ui/glass-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
-import { 
-  Brain, 
-  Pill, 
+import {
+  Brain,
+  Pill,
   ChartLine,
   Info,
   TrendUp,
   TrendDown,
   Lightning,
-  Clock
+  Clock,
+  Target
 } from '@phosphor-icons/react';
 import { cn } from '@/shared/utils';
 import type { Medication, MedicationDose, MoodEntry } from '@/shared/types';
@@ -17,6 +18,7 @@ import { StatisticsEngine } from '@/features/analytics/utils/statistics-engine';
 import { calculateConcentration } from '@/features/analytics/utils/pharmacokinetics';
 import CorrelationMatrix from './CorrelationMatrix';
 import LagCorrelationChart from './LagCorrelationChart';
+import OptimalDosingRecommendation from './OptimalDosingRecommendation';
 import { TimeframeSelector, type TimeframePeriod, getTimeframeDays } from '@/shared/components/TimeframeSelector';
 
 interface AdvancedCorrelationsViewProps {
@@ -231,8 +233,12 @@ export default function AdvancedCorrelationsView({
       )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="overview">Visao Geral</TabsTrigger>
+          <TabsTrigger value="timing" className="flex items-center gap-1">
+            <Target className="w-3 h-3" />
+            <span className="hidden sm:inline">Horarios</span>
+          </TabsTrigger>
           <TabsTrigger value="temporal" className="flex items-center gap-1">
             <Clock className="w-3 h-3" />
             <span className="hidden sm:inline">Temporal</span>
@@ -277,6 +283,14 @@ export default function AdvancedCorrelationsView({
               </p>
             </GlassCard>
           )}
+        </TabsContent>
+
+        <TabsContent value="timing" className="space-y-6 mt-6">
+          <OptimalDosingRecommendation
+            medications={medications}
+            doses={doses}
+            moodEntries={moodEntries}
+          />
         </TabsContent>
 
         <TabsContent value="temporal" className="space-y-6 mt-6">
