@@ -276,6 +276,11 @@ const MoodEntryCard = ({
                             Foco: {entry.focusLevel}
                           </span>
                         )}
+                        {entry.attentionShift !== undefined && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-700 dark:text-cyan-300">
+                            Att.Shift: {entry.attentionShift}
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
                         {format(new Date(entry.timestamp), "HH:mm")}

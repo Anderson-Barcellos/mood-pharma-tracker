@@ -9,9 +9,10 @@ import { Label } from '@/shared/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select';
 import { Textarea } from '@/shared/ui/textarea';
 import { Badge } from '@/shared/ui/badge';
-import { Plus, Pill, Pencil, Trash, ClockCounterClockwise } from '@phosphor-icons/react';
+import { Plus, Pill, Pencil, Trash, ClockCounterClockwise, Lightning } from '@phosphor-icons/react';
 import type { Medication, MedicationCategory, MedicationDose } from '@/shared/types';
 import MedicationDosesView from '@/features/doses/components/MedicationDosesView';
+import { getMedicationPresets } from '@/shared/constants/medication-presets';
 
 const MEDICATION_CATEGORIES: MedicationCategory[] = [
   'SSRI',
@@ -20,6 +21,9 @@ const MEDICATION_CATEGORIES: MedicationCategory[] = [
   'Benzodiazepine',
   'Antipsychotic',
   'Mood Stabilizer',
+  'Nootropic',
+  'Amino Acid',
+  'Fatty Acid',
   'Other'
 ];
 
@@ -54,6 +58,23 @@ export default function MedicationsView() {
       notes: ''
     });
     setEditingMed(null);
+  };
+
+  const handlePresetSelect = (presetName: string) => {
+    const presets = getMedicationPresets();
+    const preset = presets.find(p => p.name === presetName);
+    if (preset) {
+      setFormData({
+        name: preset.name,
+        brandName: preset.brandName || '',
+        category: (preset.category as MedicationCategory) || 'Other',
+        halfLife: preset.halfLife.toString(),
+        volumeOfDistribution: preset.volumeOfDistribution.toString(),
+        bioavailability: preset.bioavailability.toString(),
+        absorptionRate: preset.absorptionRate.toString(),
+        notes: preset.notes || ''
+      });
+    }
   };
 
   const openAddDialog = () => {
@@ -134,6 +155,31 @@ export default function MedicationsView() {
                 Enter the pharmacokinetic parameters for your medication
               </DialogDescription>
             </DialogHeader>
+
+            {!editingMed && (
+              <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
+                <Label className="text-sm font-medium flex items-center gap-2 mb-2">
+                  <Lightning className="w-4 h-4 text-primary" weight="fill" />
+                  Quick Fill from Preset
+                </Label>
+                <Select onValueChange={handlePresetSelect}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a medication preset..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {getMedicationPresets().map(preset => (
+                      <SelectItem key={preset.name} value={preset.name}>
+                        {preset.name} {preset.brandName ? `(${preset.brandName})` : ''} - {preset.category}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  Auto-preenche todos os parâmetros PK
+                </p>
+              </div>
+            )}
+
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">

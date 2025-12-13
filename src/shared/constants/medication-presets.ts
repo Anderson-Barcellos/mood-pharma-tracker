@@ -76,6 +76,56 @@ const MEDICATION_PRESETS: Omit<Medication, 'id' | 'createdAt' | 'updatedAt'>[] =
     },
     notes: 'Long-acting benzodiazepine. GABA-A agonist. High potency. Risk of tolerance and dependence. Peak plasma 1-4h.',
   },
+  {
+    name: 'Piracetam',
+    brandName: 'Nootropil',
+    category: 'Nootropic',
+    halfLife: 5, // hours - Range 4-5h in healthy adults
+    volumeOfDistribution: 0.6, // L/kg - Distributes to total body water
+    bioavailability: 1.0, // ~100% - Excellent oral absorption
+    absorptionRate: 2.5, // /hour - Fast absorption, Tmax 30-60 min
+    notes: 'Racetam nootropic. Modulates AMPA receptors and membrane fluidity. Renally excreted unchanged. Doses typically 1.2-4.8g/day.',
+  },
+  {
+    name: 'L-Tyrosine',
+    brandName: 'Tirosina',
+    category: 'Amino Acid',
+    halfLife: 2.5, // hours - Rapid metabolism as amino acid
+    volumeOfDistribution: 0.3, // L/kg - Limited distribution
+    bioavailability: 0.75, // 75% - Good but competes with other LNAA
+    absorptionRate: 3.0, // /hour - Fast absorption, peak 1-2h
+    notes: 'Dopamine/norepinephrine precursor. Best taken on empty stomach. Avoid with MAOIs. Typical dose 500-2000mg.',
+  },
+  {
+    name: 'Creatine',
+    brandName: 'Creatina',
+    category: 'Amino Acid',
+    halfLife: 180, // hours (~7.5 days) - Very slow turnover, tissue saturation model
+    volumeOfDistribution: 0.5, // L/kg - Primarily muscle/brain tissue
+    bioavailability: 0.95, // 95% - Excellent absorption (monohydrate)
+    absorptionRate: 1.5, // /hour - Moderate absorption
+    notes: 'Phosphocreatine precursor. Saturates over 5-7 days loading or 3-4 weeks maintenance. Neuroprotective. Dose 3-5g/day.',
+  },
+  {
+    name: 'Omega-3 (EPA/DHA)',
+    brandName: 'Fish Oil',
+    category: 'Fatty Acid',
+    halfLife: 48, // hours - Slow incorporation into cell membranes
+    volumeOfDistribution: 0.2, // L/kg - Lipophilic, membrane-bound
+    bioavailability: 0.70, // 70% - Better with fatty meals
+    absorptionRate: 0.5, // /hour - Slow absorption (lipid digestion)
+    notes: 'Essential fatty acids. Anti-inflammatory, membrane fluidity. Effects build over weeks. EPA for mood, DHA for cognition. Dose 1-3g/day.',
+  },
+  {
+    name: 'L-Theanine',
+    brandName: 'Teanina',
+    category: 'Amino Acid',
+    halfLife: 1.2, // hours - Very rapid metabolism
+    volumeOfDistribution: 0.4, // L/kg - Crosses BBB readily
+    bioavailability: 0.85, // 85% - Good oral absorption
+    absorptionRate: 4.0, // /hour - Very fast absorption, peak 30-60min
+    notes: 'GABA/glutamate modulator. Promotes alpha waves. Synergistic with caffeine. Anxiolytic without sedation. Dose 100-400mg.',
+  },
 ];
 
 /**

@@ -1,16 +1,18 @@
 import { useState, useMemo } from 'react';
 import { GlassCard } from '@/shared/ui/glass-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
-import {
-  Brain,
-  Pill,
+import { 
+  Brain, 
+  Pill, 
   ChartLine,
   Info,
   TrendUp,
   TrendDown,
   Lightning,
   Clock,
-  Target
+  Drop,
+  Target,
+  ArrowsLeftRight
 } from '@phosphor-icons/react';
 import { cn } from '@/shared/utils';
 import type { Medication, MedicationDose, MoodEntry } from '@/shared/types';
@@ -62,6 +64,11 @@ export default function AdvancedCorrelationsView({
       }
       const hour = hourlyData.get(hourKey)!;
       hour.humor = entry.moodScore;
+      if (entry.anxietyLevel !== undefined) hour.ansiedade = entry.anxietyLevel;
+      if (entry.energyLevel !== undefined) hour.energia = entry.energyLevel;
+      if (entry.focusLevel !== undefined) hour.foco = entry.focusLevel;
+      if (entry.cognitiveScore !== undefined) hour.cognicao = entry.cognitiveScore;
+      if (entry.attentionShift !== undefined) hour.attShift = entry.attentionShift;
     });
     
     const selectedMeds = selectedMedications.length > 0 
@@ -106,6 +113,18 @@ export default function AdvancedCorrelationsView({
     return series;
   }, [filteredMoodEntries, filteredDoses, medications, selectedMedications]);
 
+  const moodMetrics = ['humor', 'ansiedade', 'energia', 'foco', 'cognicao', 'attShift'] as const;
+  type MoodMetric = typeof moodMetrics[number];
+  
+  const metricLabels: Record<MoodMetric, string> = {
+    humor: 'Humor',
+    ansiedade: 'Ansiedade',
+    energia: 'Energia',
+    foco: 'Foco',
+    cognicao: 'Cognição',
+    attShift: 'Att. Shift'
+  };
+
   const statistics = useMemo(() => {
     if (!correlationData.humor) {
       return null;
@@ -113,21 +132,39 @@ export default function AdvancedCorrelationsView({
 
     const moodStats = StatisticsEngine.descriptiveStats(correlationData.humor);
     
-    const medicationCorrelations: Record<string, { vsHumor: { value: number; significance: string } }> = {};
+    const metricStats: Partial<Record<MoodMetric, { mean: number; stdDev: number; count: number }>> = {};
+    moodMetrics.forEach(metric => {
+      if (correlationData[metric] && correlationData[metric].length > 0) {
+        const nonZeroValues = correlationData[metric].filter(v => v > 0);
+        if (nonZeroValues.length > 3) {
+          const stats = StatisticsEngine.descriptiveStats(nonZeroValues);
+          metricStats[metric] = { mean: stats.mean, stdDev: stats.stdDev, count: nonZeroValues.length };
+        }
+      }
+    });
+    
+    const medicationCorrelations: Record<string, Record<MoodMetric, { value: number; significance: string }>> = {};
     
     medications.forEach(med => {
-      if (correlationData[med.name] && correlationData.humor) {
-        medicationCorrelations[med.name] = {
-          vsHumor: StatisticsEngine.pearsonCorrelation(
-            correlationData[med.name],
-            correlationData.humor
-          )
-        };
+      if (correlationData[med.name]) {
+        const correlations: Record<string, { value: number; significance: string }> = {};
+        moodMetrics.forEach(metric => {
+          if (correlationData[metric] && correlationData[metric].length > 3) {
+            correlations[metric] = StatisticsEngine.pearsonCorrelation(
+              correlationData[med.name],
+              correlationData[metric]
+            );
+          }
+        });
+        if (Object.keys(correlations).length > 0) {
+          medicationCorrelations[med.name] = correlations as Record<MoodMetric, { value: number; significance: string }>;
+        }
       }
     });
 
     return {
       mood: moodStats,
+      metricStats,
       medicationCorrelations,
       dataPoints: correlationData.humor?.length || 0
     };
@@ -137,19 +174,33 @@ export default function AdvancedCorrelationsView({
     const result: string[] = [];
     
     if (statistics) {
-      Object.entries(statistics.medicationCorrelations).forEach(([medName, corr]) => {
-        if (corr.vsHumor.significance !== 'none') {
-          const effect = corr.vsHumor.value > 0 ? 'melhora' : 'piora';
-          result.push(
-            `${medName} ${effect} seu humor (r=${corr.vsHumor.value.toFixed(2)})`
-          );
+      Object.entries(statistics.medicationCorrelations).forEach(([medName, correlations]) => {
+        if (correlations.humor && correlations.humor.significance !== 'none') {
+          const effect = correlations.humor.value > 0 ? 'melhora' : 'piora';
+          result.push(`${medName} ${effect} seu humor (r=${correlations.humor.value.toFixed(2)})`);
+        }
+        if (correlations.ansiedade && correlations.ansiedade.significance !== 'none') {
+          const effect = correlations.ansiedade.value > 0 ? 'aumenta' : 'reduz';
+          result.push(`${medName} ${effect} ansiedade (r=${correlations.ansiedade.value.toFixed(2)})`);
+        }
+        if (correlations.energia && correlations.energia.significance !== 'none') {
+          const effect = correlations.energia.value > 0 ? 'aumenta' : 'reduz';
+          result.push(`${medName} ${effect} energia (r=${correlations.energia.value.toFixed(2)})`);
+        }
+        if (correlations.foco && correlations.foco.significance !== 'none') {
+          const effect = correlations.foco.value > 0 ? 'melhora' : 'piora';
+          result.push(`${medName} ${effect} foco (r=${correlations.foco.value.toFixed(2)})`);
+        }
+        if (correlations.cognicao && correlations.cognicao.significance !== 'none') {
+          const effect = correlations.cognicao.value > 0 ? 'melhora' : 'piora';
+          result.push(`${medName} ${effect} cognição (r=${correlations.cognicao.value.toFixed(2)})`);
         }
       });
       
       if (statistics.mood.mean < 5) {
-        result.push('Humor medio abaixo do ideal - acompanhe com seu medico');
+        result.push('Humor médio abaixo do ideal - acompanhe com seu médico');
       } else if (statistics.mood.mean > 7) {
-        result.push('Excelente humor medio no periodo!');
+        result.push('Excelente humor médio no período!');
       }
     }
     
@@ -249,37 +300,95 @@ export default function AdvancedCorrelationsView({
         <TabsContent value="overview" className="space-y-6">
           {Object.keys(statistics?.medicationCorrelations || {}).length > 0 ? (
             <GlassCard className="p-6">
-              <h3 className="text-lg font-semibold mb-4">Correlacoes Medicamento → Humor</h3>
-              <div className="space-y-4">
-                {Object.entries(statistics?.medicationCorrelations || {}).map(([medName, corr]) => (
-                  <div key={medName} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                    <div className="flex items-center gap-3">
+              <h3 className="text-lg font-semibold mb-4">Correlações Medicamento → Métricas</h3>
+              <div className="space-y-6">
+                {Object.entries(statistics?.medicationCorrelations || {}).map(([medName, correlations]) => (
+                  <div key={medName} className="p-4 rounded-lg bg-muted/30">
+                    <div className="flex items-center gap-3 mb-3">
                       <Pill className="w-5 h-5 text-teal-500" />
-                      <span className="font-medium">{medName}</span>
+                      <span className="font-semibold text-lg">{medName}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className={cn(
-                        "font-bold",
-                        corr.vsHumor.value > 0 ? "text-green-500" : "text-red-500"
-                      )}>
-                        r = {corr.vsHumor.value.toFixed(2)}
-                      </span>
-                      {corr.vsHumor.value > 0 ? (
-                        <TrendUp className="w-5 h-5 text-green-500" />
-                      ) : (
-                        <TrendDown className="w-5 h-5 text-red-500" />
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {correlations.humor && (
+                        <div className="flex items-center justify-between p-2 rounded bg-purple-500/10">
+                          <span className="text-xs flex items-center gap-1">
+                            <Brain className="w-3 h-3 text-purple-500" />
+                            Humor
+                          </span>
+                          <span className={cn("text-xs font-bold", correlations.humor.value > 0 ? "text-green-500" : "text-red-500")}>
+                            {correlations.humor.value.toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+                      {correlations.ansiedade && (
+                        <div className="flex items-center justify-between p-2 rounded bg-rose-500/10">
+                          <span className="text-xs flex items-center gap-1">
+                            <Drop className="w-3 h-3 text-rose-500" />
+                            Ansiedade
+                          </span>
+                          <span className={cn("text-xs font-bold", correlations.ansiedade.value < 0 ? "text-green-500" : "text-red-500")}>
+                            {correlations.ansiedade.value.toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+                      {correlations.energia && (
+                        <div className="flex items-center justify-between p-2 rounded bg-amber-500/10">
+                          <span className="text-xs flex items-center gap-1">
+                            <Lightning className="w-3 h-3 text-amber-500" />
+                            Energia
+                          </span>
+                          <span className={cn("text-xs font-bold", correlations.energia.value > 0 ? "text-green-500" : "text-red-500")}>
+                            {correlations.energia.value.toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+                      {correlations.foco && (
+                        <div className="flex items-center justify-between p-2 rounded bg-blue-500/10">
+                          <span className="text-xs flex items-center gap-1">
+                            <Target className="w-3 h-3 text-blue-500" />
+                            Foco
+                          </span>
+                          <span className={cn("text-xs font-bold", correlations.foco.value > 0 ? "text-green-500" : "text-red-500")}>
+                            {correlations.foco.value.toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+                      {correlations.cognicao && (
+                        <div className="flex items-center justify-between p-2 rounded bg-violet-500/10">
+                          <span className="text-xs flex items-center gap-1">
+                            <Brain className="w-3 h-3 text-violet-500" />
+                            Cognição
+                          </span>
+                          <span className={cn("text-xs font-bold", correlations.cognicao.value > 0 ? "text-green-500" : "text-red-500")}>
+                            {correlations.cognicao.value.toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+                      {correlations.attShift && (
+                        <div className="flex items-center justify-between p-2 rounded bg-cyan-500/10">
+                          <span className="text-xs flex items-center gap-1">
+                            <ArrowsLeftRight className="w-3 h-3 text-cyan-500" />
+                            Att.Shift
+                          </span>
+                          <span className={cn("text-xs font-bold", correlations.attShift.value > 0 ? "text-green-500" : "text-red-500")}>
+                            {correlations.attShift.value.toFixed(2)}
+                          </span>
+                        </div>
                       )}
                     </div>
                   </div>
                 ))}
               </div>
+              <p className="text-[10px] text-muted-foreground mt-4">
+                Valores positivos = correlação direta. Para ansiedade, valor negativo é desejável (medicamento reduz ansiedade).
+              </p>
             </GlassCard>
           ) : (
             <GlassCard className="p-12 text-center">
               <Info className="w-16 h-16 mx-auto mb-4 text-muted-foreground opacity-50" />
               <h3 className="text-lg font-medium mb-2">Dados Insuficientes</h3>
               <p className="text-muted-foreground">
-                Registre mais dados de humor e doses para visualizar correlacoes.
+                Registre mais dados de humor e doses para visualizar correlações.
               </p>
             </GlassCard>
           )}
@@ -305,6 +414,47 @@ export default function AdvancedCorrelationsView({
                   </span>
                 </div>
               </GlassCard>
+
+              {/* Diagnostic Panel */}
+              <GlassCard className="p-4">
+                <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+                  <ChartLine className="w-4 h-4" />
+                  Status dos Dados (min: 3 doses + 5 moods)
+                </h4>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {medications.map(med => {
+                    const medDoses = doses.filter(d => d.medicationId === med.id);
+                    const hasEnoughDoses = medDoses.length >= 3;
+                    const hasEnoughMoods = moodEntries.length >= 5;
+                    const isReady = hasEnoughDoses && hasEnoughMoods;
+
+                    return (
+                      <div
+                        key={med.id}
+                        className={cn(
+                          "flex items-center gap-2 p-2 rounded-lg text-xs",
+                          isReady ? "bg-green-500/10 text-green-600" : "bg-orange-500/10 text-orange-600"
+                        )}
+                      >
+                        <Pill className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span className="font-medium truncate">{med.name}</span>
+                        <span className="ml-auto flex-shrink-0">
+                          {medDoses.length}/3 doses
+                        </span>
+                        {isReady ? (
+                          <span className="text-green-500">✓</span>
+                        ) : (
+                          <span className="text-orange-500">!</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-2">
+                  Total mood entries: {moodEntries.length}/5 {moodEntries.length >= 5 ? '✓' : '(precisa de mais)'}
+                </p>
+              </GlassCard>
+
               {medications.map(medication => (
                 <LagCorrelationChart
                   key={medication.id}

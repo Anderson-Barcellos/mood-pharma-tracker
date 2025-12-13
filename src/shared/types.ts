@@ -43,6 +43,7 @@ export interface MoodEntry {
   energyLevel?: number;
   focusLevel?: number;
   cognitiveScore?: number;
+  attentionShift?: number;
   notes?: string;
   createdAt: number;
 }
@@ -70,11 +71,14 @@ export interface CognitiveTest {
   createdAt: number;
 }
 
-export type MedicationCategory = 
+export type MedicationCategory =
   | 'SSRI'
   | 'SNRI'
   | 'Stimulant'
   | 'Benzodiazepine'
   | 'Antipsychotic'
   | 'Mood Stabilizer'
+  | 'Nootropic'
+  | 'Amino Acid'
+  | 'Fatty Acid'
   | 'Other';

@@ -4,7 +4,7 @@
 
 Personal health tracking PWA for monitoring medication adherence, mood patterns, and cognitive performance with pharmacokinetic modeling and correlation analysis.
 
-**Stack:** React 19 + TypeScript + Vite + Dexie (IndexedDB) + Radix UI + Tailwind CSS v4
+**Stack:** React 19 + TypeScript + Vite + Express API + Radix UI + Tailwind CSS v4
 
 ---
 
@@ -16,8 +16,9 @@ Personal health tracking PWA for monitoring medication adherence, mood patterns,
 - Multiple medication support with dose logging
 
 ### 2. Mood Monitoring
-- Quick mood logging (1-10 scale)
-- Anxiety, energy, and focus tracking
+
+- Extended metrics: anxiety, energy, focus, cognitive clarity, attention shift
+- Unified form component across all entry points
 - Time-series visualization
 
 ### 3. Cognitive Testing
@@ -32,7 +33,8 @@ Personal health tracking PWA for monitoring medication adherence, mood patterns,
 
 ### 5. Advanced Analytics
 - Correlation matrices with statistical significance
-- Temporal lag analysis (planned)
+- Multi-metric correlations (mood, anxiety, energy, focus, cognition vs medications)
+- Temporal lag analysis
 - Pharmacokinetic concentration charting
 
 ---
@@ -64,12 +66,28 @@ src/
 ```
 
 ### Data Layer
-- **Local-first:** Dexie (IndexedDB) for offline support
-- **Optional sync:** Firebase for backup/multi-device
-- **No server required:** PWA works fully offline
+- **API Backend:** Express server (`api/save-data.js`) on port 8113
+- **Storage:** JSON file (`public/data/app-data.json`)
+- **Sync:** All devices share same data via API (no Firebase needed)
+- **Architecture:**
+  ```
+  Browser → Apache (proxy) → Vite (8112) + API (8113) → app-data.json
+  ```
+
+### Systemd Services
+```bash
+# Frontend (Vite)
+sudo systemctl status mood-pharma-tracker    # port 8112
+
+# Backend (API)
+sudo systemctl status mood-pharma-api        # port 8113
+
+# Restart after code changes
+sudo systemctl restart mood-pharma-tracker
+```
 
 ---
-from 
+
 ## 🔧 Coding Conventions
 
 ### TypeScript
@@ -209,7 +227,7 @@ for (const mood of moodEntries) {
 data.sort((a, b) => a.timestamp - b.timestamp);
 
 // ❌ Separate datasets = tooltip only on mood points
-const concentrationData = [...]; 
+const concentrationData = [...];
 const moodData = [...]; // Tooltip won't work on concentration line!
 ```
 
@@ -281,11 +299,12 @@ interface Medication {
 interface MoodEntry {
   id: string;
   timestamp: number;
-  moodScore: number;        // 1-10
+  moodScore: number;        // 1-10 (required)
   anxietyLevel?: number;    // 1-10
   energyLevel?: number;     // 1-10
   focusLevel?: number;      // 1-10
-  cognitiveScore?: number;  // from tests
+  cognitiveScore?: number;  // 1-10 (mental clarity)
+  attentionShift?: number;  // 1-10 (attention flexibility)
   notes?: string;
   createdAt: number;
 }
@@ -309,16 +328,9 @@ interface HeartRateRecord extends BaseHealthRecord {
 ```bash
 # Gemini API for cognitive tests
 VITE_GEMINI_API_KEY=your_key_here
-```
 
-### Optional (Firebase)
-```bash
-VITE_FIREBASE_API_KEY=
-VITE_FIREBASE_AUTH_DOMAIN=
-VITE_FIREBASE_PROJECT_ID=
-VITE_FIREBASE_STORAGE_BUCKET=
-VITE_FIREBASE_MESSAGING_SENDER_ID=
-VITE_FIREBASE_APP_ID=
+# API port (default 8113)
+API_PORT=8113
 ```
 
 ---
@@ -331,9 +343,8 @@ VITE_FIREBASE_APP_ID=
 - Can be safely ignored for now
 
 ### Incomplete Features
-1. **Temporal Lag Analysis:** Tab exists but empty (AdvancedCorrelationsView.tsx:566)
-2. **API Endpoint:** `/api/list-health-files` not implemented
-3. **Console.log:** 120+ statements in production code (needs cleanup)
+1. **API Endpoint:** `/api/list-health-files` not implemented
+2. **Console.log:** 120+ statements in production code (needs cleanup)
 
 ### Performance Notes
 - Large bundle (733KB / 206KB gzip) - mainly from Recharts
@@ -343,6 +354,14 @@ VITE_FIREBASE_APP_ID=
 ---
 
 ## 🚀 Recent Major Changes
+
+### 2025-12-10: Unified Mood Form + Extended Correlations
+- ✅ Created unified `MoodLogForm.tsx` component for all mood entry points
+- ✅ All forms now have same fields: mood, anxiety, energy, focus, cognition, attention shift
+- ✅ Fields grouped in collapsible sections (Cognitive / Emotional)
+- ✅ Extended `AdvancedCorrelationsView` to correlate ALL metrics vs medications
+- ✅ Dashboard card shows anxiety/energy averages when available
+- ✅ Removed duplicate form code from QuickMoodLog, MoodView, QuickMoodButton
 
 ### 2025-12-05: PKChart Unification
 - ✅ Created unified `PKChart.tsx` component for all PK visualizations
@@ -438,7 +457,16 @@ npm run process:health
 - `/src/features/analytics/components/Dashboard.tsx` - Main dashboard
 - `/src/features/analytics/components/PKChart.tsx` - Unified PK + Mood chart (use this!)
 - `/src/features/analytics/components/AdvancedCorrelationsView.tsx` - Advanced correlations
+- `/src/features/mood/components/MoodLogForm.tsx` - Unified mood entry form (use this!)
 - `/src/shared/layouts/AppLayout.tsx` - App shell
+
+### Mood Components (Consolidated)
+```
+MoodLogForm.tsx        ← USE THIS (unified form with all metrics)
+├── Used by: QuickMoodLog.tsx (Dashboard card)
+├── Used by: MoodView.tsx (Mood page)
+└── Used by: QuickMoodButton.tsx (FAB button)
+```
 
 ### Chart Components (Consolidated)
 ```
@@ -476,9 +504,9 @@ MedicationConcentrationChart.tsx  ← DEPRECATED (do not use)
 
 ---
 
-**Last Updated:** 2025-12-05
-**Project Status:** ✅ Build passing, 5 non-critical TS errors, PKChart unified
-**Next Priority:** Implement temporal lag analysis, cleanup console.logs, remove deprecated MedicationConcentrationChart
+**Last Updated:** 2025-12-10
+**Project Status:** ✅ Build passing, 5 non-critical TS errors, Forms unified, Correlations expanded
+**Next Priority:** Cleanup console.logs, remove deprecated MedicationConcentrationChart
 
 ---
 

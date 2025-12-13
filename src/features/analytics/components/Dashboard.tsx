@@ -33,6 +33,18 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
     ? recentMoods.reduce((a, b) => a + b.moodScore, 0) / recentMoods.length 
     : null;
 
+  const recentMetrics = {
+    anxiety: recentMoods.filter(m => m.anxietyLevel !== undefined),
+    energy: recentMoods.filter(m => m.energyLevel !== undefined),
+    focus: recentMoods.filter(m => m.focusLevel !== undefined),
+  };
+  const avgAnxiety = recentMetrics.anxiety.length > 0 
+    ? recentMetrics.anxiety.reduce((a, b) => a + (b.anxietyLevel ?? 0), 0) / recentMetrics.anxiety.length 
+    : null;
+  const avgEnergy = recentMetrics.energy.length > 0 
+    ? recentMetrics.energy.reduce((a, b) => a + (b.energyLevel ?? 0), 0) / recentMetrics.energy.length 
+    : null;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -71,12 +83,18 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
             <Smiley className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent className="px-2 pt-0 pb-2">
-            <div className="text-lg sm:text-xl font-bold">{moodEntries.length}</div>
-            <p className="text-xs text-muted-foreground">
-              {avgMood !== null
-                ? `Média recente: ${avgMood.toFixed(1)}/10`
-                : 'Sem registros'}
-            </p>
+            <div className="text-lg sm:text-xl font-bold">
+              {avgMood !== null ? avgMood.toFixed(1) : '-'}/10
+            </div>
+            <div className="text-xs text-muted-foreground space-y-0.5">
+              <span>{moodEntries.length} registros</span>
+              {(avgAnxiety !== null || avgEnergy !== null) && (
+                <div className="flex gap-2">
+                  {avgAnxiety !== null && <span className="text-rose-500">A:{avgAnxiety.toFixed(0)}</span>}
+                  {avgEnergy !== null && <span className="text-amber-500">E:{avgEnergy.toFixed(0)}</span>}
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
 

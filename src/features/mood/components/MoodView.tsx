@@ -10,14 +10,16 @@ import {
   Pencil,
   Trash,
   MagnifyingGlass,
-  FunnelSimple,
-  CalendarBlank,
-  ChartLine,
   Smiley,
   SmileyMeh,
   SmileySad,
   SmileyWink,
-  SmileyXEyes
+  SmileyXEyes,
+  Brain,
+  ArrowsLeftRight,
+  Lightning,
+  Drop,
+  Target
 } from '@phosphor-icons/react';
 import { useMoodEntries } from '@/hooks/use-mood-entries';
 import { Button } from '@/shared/ui/button';
@@ -32,10 +34,9 @@ import { Skeleton } from '@/shared/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 import { toast } from 'sonner';
 import { cn } from '@/shared/utils';
-import { parseLocalDateTime } from '@/shared/utils/date-helpers';
 import type { MoodEntry } from '@/shared/types';
+import MoodLogForm, { type MoodLogData } from './MoodLogForm';
 
-// Utility to detect mobile
 const useIsMobile = () => {
   const [isMobile, setIsMobile] = useState(false);
 
@@ -49,7 +50,6 @@ const useIsMobile = () => {
   return isMobile;
 };
 
-// Emoji mapping for mood scores
 const getMoodEmoji = (score: number) => {
   if (score >= 9) return { icon: Smiley, color: 'text-green-500', label: 'Excelente' };
   if (score >= 7) return { icon: SmileyWink, color: 'text-emerald-500', label: 'Muito Bom' };
@@ -58,14 +58,12 @@ const getMoodEmoji = (score: number) => {
   return { icon: SmileyXEyes, color: 'text-red-500', label: 'Terrível' };
 };
 
-// Gradient for mood cards based on score
 const getMoodGradient = (score: number) => {
   if (score >= 7) return 'from-emerald-500/10 to-green-500/5';
   if (score >= 4) return 'from-amber-500/10 to-yellow-500/5';
   return 'from-red-500/10 to-orange-500/5';
 };
 
-// Mood Slider Component with reactive emoji
 const MoodSlider = ({
   value,
   onChange,
@@ -89,7 +87,7 @@ const MoodSlider = ({
       <Slider
         value={[value]}
         onValueChange={(vals) => onChange(vals[0])}
-        min={0}
+        min={1}
         max={10}
         step={1}
         className="w-full"
@@ -103,158 +101,6 @@ const MoodSlider = ({
   );
 };
 
-// Quick Log Form Component
-const QuickLogForm = ({
-  onClose,
-  onSubmit
-}: {
-  onClose: () => void;
-  onSubmit: (data: any) => void;
-}) => {
-  const [moodScore, setMoodScore] = useState(5);
-  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [time, setTime] = useState(format(new Date(), 'HH:mm'));
-  const [notes, setNotes] = useState('');
-  const [showExtended, setShowExtended] = useState(false);
-  const [anxietyLevel, setAnxietyLevel] = useState<number>(5);
-  const [energyLevel, setEnergyLevel] = useState<number>(5);
-  const [focusLevel, setFocusLevel] = useState<number>(5);
-
-  const handleSubmit = () => {
-    try {
-      const timestamp = parseLocalDateTime(date, time);
-      onSubmit({
-        timestamp,
-        moodScore,
-        anxietyLevel: showExtended ? anxietyLevel : undefined,
-        energyLevel: showExtended ? energyLevel : undefined,
-        focusLevel: showExtended ? focusLevel : undefined,
-        notes: notes.trim() || undefined
-      });
-    } catch (error) {
-      toast.error('Invalid date/time', {
-        description: error instanceof Error ? error.message : 'Please check the date and time fields'
-      });
-    }
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 20 }}
-      className="space-y-4"
-    >
-      <MoodSlider value={moodScore} onChange={setMoodScore} label="Como você está se sentindo?" />
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-2">
-          <Label className="text-sm">Data</Label>
-          <Input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="w-full"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label className="text-sm">Hora</Label>
-          <Input
-            type="time"
-            value={time}
-            onChange={(e) => setTime(e.target.value)}
-            className="w-full"
-          />
-        </div>
-      </div>
-
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => setShowExtended(!showExtended)}
-        className="w-full text-xs"
-      >
-        {showExtended ? 'Ocultar' : 'Mostrar'} métricas estendidas
-      </Button>
-
-      <AnimatePresence>
-        {showExtended && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="space-y-4 overflow-hidden"
-          >
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm">Ansiedade</Label>
-                <span className="text-sm font-medium">{anxietyLevel}/10</span>
-              </div>
-              <Slider
-                value={[anxietyLevel]}
-                onValueChange={(vals) => setAnxietyLevel(vals[0])}
-                min={0}
-                max={10}
-                step={1}
-              />
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm">Energia</Label>
-                <span className="text-sm font-medium">{energyLevel}/10</span>
-              </div>
-              <Slider
-                value={[energyLevel]}
-                onValueChange={(vals) => setEnergyLevel(vals[0])}
-                min={0}
-                max={10}
-                step={1}
-              />
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm">Foco</Label>
-                <span className="text-sm font-medium">{focusLevel}/10</span>
-              </div>
-              <Slider
-                value={[focusLevel]}
-                onValueChange={(vals) => setFocusLevel(vals[0])}
-                min={0}
-                max={10}
-                step={1}
-              />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <div className="space-y-2">
-        <Label className="text-sm">Notas (opcional)</Label>
-        <Textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Como você está se sentindo? O que aconteceu hoje?"
-          rows={3}
-          className="resize-none"
-        />
-      </div>
-
-      <div className="flex gap-2 pt-2">
-        <Button variant="outline" onClick={onClose} className="flex-1">
-          Cancelar
-        </Button>
-        <Button onClick={handleSubmit} className="flex-1">
-          <Check className="w-4 h-4 mr-2" />
-          Salvar
-        </Button>
-      </div>
-    </motion.div>
-  );
-};
-
-// Mood Entry Card with inline editing
 const MoodEntryCard = ({
   entry,
   onEdit,
@@ -332,19 +178,34 @@ const MoodEntryCard = ({
                   <div className="flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-bold text-lg">{entry.moodScore}/10</span>
+                      {entry.cognitiveScore !== undefined && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-700 dark:text-purple-300 flex items-center gap-1">
+                          <Brain className="w-3 h-3" />
+                          {entry.cognitiveScore}
+                        </span>
+                      )}
+                      {entry.attentionShift !== undefined && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 flex items-center gap-1">
+                          <ArrowsLeftRight className="w-3 h-3" />
+                          {entry.attentionShift}
+                        </span>
+                      )}
                       {entry.anxietyLevel !== undefined && (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300">
-                          Ansiedade: {entry.anxietyLevel}
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-700 dark:text-rose-300 flex items-center gap-1">
+                          <Drop className="w-3 h-3" />
+                          {entry.anxietyLevel}
                         </span>
                       )}
                       {entry.energyLevel !== undefined && (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-700 dark:text-blue-300">
-                          Energia: {entry.energyLevel}
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 flex items-center gap-1">
+                          <Lightning className="w-3 h-3" />
+                          {entry.energyLevel}
                         </span>
                       )}
                       {entry.focusLevel !== undefined && (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-700 dark:text-purple-300">
-                          Foco: {entry.focusLevel}
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-700 dark:text-blue-300 flex items-center gap-1">
+                          <Target className="w-3 h-3" />
+                          {entry.focusLevel}
                         </span>
                       )}
                     </div>
@@ -385,7 +246,6 @@ const MoodEntryCard = ({
   );
 };
 
-// Main MoodView Component
 export default function MoodView() {
   const { moodEntries, createMoodEntry, updateMoodEntry, deleteMoodEntry, isLoading } = useMoodEntries();
   const [quickLogOpen, setQuickLogOpen] = useState(false);
@@ -393,11 +253,9 @@ export default function MoodView() {
   const [timeFilter, setTimeFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
   const isMobile = useIsMobile();
 
-  // Filter entries
   const filteredEntries = useMemo(() => {
     let filtered = [...moodEntries];
 
-    // Time filter
     const now = Date.now();
     if (timeFilter === 'today') {
       const startOfDay = new Date();
@@ -411,7 +269,6 @@ export default function MoodView() {
       filtered = filtered.filter(e => e.timestamp >= monthAgo);
     }
 
-    // Search filter
     if (searchQuery) {
       filtered = filtered.filter(e =>
         e.notes?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -421,7 +278,7 @@ export default function MoodView() {
     return filtered.sort((a, b) => b.timestamp - a.timestamp);
   }, [moodEntries, timeFilter, searchQuery]);
 
-  const handleQuickLog = useCallback(async (data: any) => {
+  const handleQuickLog = useCallback(async (data: MoodLogData) => {
     try {
       await createMoodEntry(data);
       toast.success('Humor registrado com sucesso!');
@@ -439,6 +296,8 @@ export default function MoodView() {
         anxietyLevel: entry.anxietyLevel,
         energyLevel: entry.energyLevel,
         focusLevel: entry.focusLevel,
+        cognitiveScore: entry.cognitiveScore,
+        attentionShift: entry.attentionShift,
         notes: entry.notes
       });
       toast.success('Registro atualizado!');
@@ -477,11 +336,11 @@ export default function MoodView() {
           <Plus className="w-6 h-6" weight="bold" />
         </motion.button>
       </DrawerTrigger>
-      <DrawerContent className="px-4 pb-6">
+      <DrawerContent className="px-4 pb-6 max-h-[85vh] overflow-y-auto">
         <DrawerHeader>
           <DrawerTitle>Registrar Humor</DrawerTitle>
         </DrawerHeader>
-        <QuickLogForm onClose={() => setQuickLogOpen(false)} onSubmit={handleQuickLog} />
+        <MoodLogForm onClose={() => setQuickLogOpen(false)} onSubmit={handleQuickLog} />
       </DrawerContent>
     </Drawer>
   ) : (
@@ -490,18 +349,17 @@ export default function MoodView() {
         <Plus className="w-5 h-5 mr-2" weight="bold" />
         Novo Registro
       </Button>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Registrar Humor</DialogTitle>
         </DialogHeader>
-        <QuickLogForm onClose={() => setQuickLogOpen(false)} onSubmit={handleQuickLog} />
+        <MoodLogForm onClose={() => setQuickLogOpen(false)} onSubmit={handleQuickLog} />
       </DialogContent>
     </Dialog>
   );
 
   return (
     <div className="space-y-6 pb-20 md:pb-6">
-      {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Rastreamento de Humor</h2>
@@ -512,7 +370,6 @@ export default function MoodView() {
         {!isMobile && QuickLogTrigger}
       </div>
 
-      {/* Search and Filter */}
       <Card className="border-0 shadow-sm bg-card/50 backdrop-blur-sm">
         <CardContent className="p-4 space-y-3">
           <div className="relative">
@@ -525,7 +382,7 @@ export default function MoodView() {
             />
           </div>
 
-          <Tabs value={timeFilter} onValueChange={(v) => setTimeFilter(v as any)}>
+          <Tabs value={timeFilter} onValueChange={(v) => setTimeFilter(v as typeof timeFilter)}>
             <TabsList className="grid grid-cols-4 w-full">
               <TabsTrigger value="all" className="text-xs">Todos</TabsTrigger>
               <TabsTrigger value="today" className="text-xs">Hoje</TabsTrigger>
@@ -536,7 +393,6 @@ export default function MoodView() {
         </CardContent>
       </Card>
 
-      {/* Timeline */}
       <div className="space-y-3">
         {isLoading ? (
           <div className="space-y-3">
@@ -589,10 +445,8 @@ export default function MoodView() {
         )}
       </div>
 
-      {/* FAB for mobile */}
       {isMobile && QuickLogTrigger}
 
-      {/* Stats Footer */}
       {filteredEntries.length > 0 && (
         <Card className="border-0 shadow-sm bg-gradient-to-br from-primary/5 to-primary/10">
           <CardContent className="p-4">
