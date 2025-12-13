@@ -10,13 +10,28 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
+  ReferenceArea,
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card';
 import { GlassCard } from '@/shared/ui/glass-card';
-import { TrendUp, TrendDown, Clock, Lightning, Info, Pill, Brain, ArrowsClockwise } from '@phosphor-icons/react';
+import { Badge } from '@/shared/ui/badge';
+import {
+  TrendUp,
+  TrendDown,
+  Clock,
+  Lightning,
+  Info,
+  Pill,
+  Brain,
+  ArrowsClockwise,
+  Target,
+  CheckCircle,
+  WarningCircle,
+  Lightbulb
+} from '@phosphor-icons/react';
 import { useState } from 'react';
 import { StatisticsEngine } from '@/features/analytics/utils/statistics-engine';
-import { calculateConcentration } from '@/features/analytics/utils/pharmacokinetics';
+import { calculateConcentration, getPKMetrics } from '@/features/analytics/utils/pharmacokinetics';
 import type { Medication, MedicationDose, MoodEntry } from '@/shared/types';
 
 interface LagCorrelationChartProps {
@@ -31,6 +46,7 @@ interface LagDataPoint {
   lag: number;
   correlation: number;
   isOptimal: boolean;
+  isTmax: boolean;
   label: string;
 }
 
@@ -104,13 +120,24 @@ export default function LagCorrelationChart({
       }
     }
 
+    // Get PK metrics for Tmax comparison
+    const pkMetrics = getPKMetrics(medication);
+    const expectedTmax = pkMetrics ? Math.round(pkMetrics.Tmax) : Math.round(medication.halfLife * 0.3);
+
     const chartData: LagDataPoint[] = crossCorr.map(point => ({
       lag: point.lag,
       correlation: point.correlation,
       isOptimal: point.lag === optimalLag,
-      label: point.lag === 0 ? 'Agora' : 
+      isTmax: point.lag === expectedTmax,
+      label: point.lag === 0 ? 'Agora' :
              point.lag > 0 ? `+${point.lag}h` : `${point.lag}h`,
     }));
+
+    // Calculate how well the observed lag matches the expected Tmax
+    const tmaxMatch = Math.abs(optimalLag - expectedTmax) <= 2;
+    const lagMatchQuality = optimalLag > 0 && tmaxMatch ? 'excelente' :
+                            optimalLag > 0 && Math.abs(optimalLag - expectedTmax) <= 4 ? 'boa' :
+                            optimalLag > 0 ? 'diferente' : 'atipica';
 
     const getInterpretation = () => {
       const absR = Math.abs(maxCorrelation);
@@ -180,6 +207,51 @@ export default function LagCorrelationChart({
 
     const scenarioHints = getScenarioHints();
 
+    // Generate actionable recommendation
+    const getRecommendation = () => {
+      if (Math.abs(maxCorrelation) < 0.2) {
+        return {
+          text: 'Continue registrando para obter padrões mais claros.',
+          type: 'info' as const,
+        };
+      }
+
+      if (optimalLag < 0) {
+        return {
+          text: 'Você parece tomar o medicamento em resposta ao humor. Considere um horário fixo diário para avaliar melhor o efeito.',
+          type: 'warning' as const,
+        };
+      }
+
+      if (maxCorrelation > 0 && tmaxMatch) {
+        return {
+          text: `Seus dados confirmam o efeito esperado! O pico de concentração (~${expectedTmax}h) coincide com melhora de humor.`,
+          type: 'success' as const,
+        };
+      }
+
+      if (maxCorrelation > 0 && optimalLag > expectedTmax) {
+        return {
+          text: `O efeito parece demorar mais que o esperado (${optimalLag}h vs ${expectedTmax}h teórico). Pode ser efeito secundário ou adaptação.`,
+          type: 'info' as const,
+        };
+      }
+
+      if (maxCorrelation < 0) {
+        return {
+          text: 'Correlação negativa observada. Isso pode indicar dosagem reativa (PRN) ou necessidade de revisão com médico.',
+          type: 'warning' as const,
+        };
+      }
+
+      return {
+        text: 'Continue acompanhando para entender melhor o padrão.',
+        type: 'info' as const,
+      };
+    };
+
+    const recommendation = getRecommendation();
+
     return {
       chartData,
       optimalLag,
@@ -188,6 +260,10 @@ export default function LagCorrelationChart({
       interpretation,
       scenarioHints,
       halfLife: medication.halfLife,
+      expectedTmax,
+      tmaxMatch,
+      lagMatchQuality,
+      recommendation,
     };
   }, [medication, doses, moodEntries, maxLagHours, bodyWeight]);
 
@@ -203,7 +279,19 @@ export default function LagCorrelationChart({
     );
   }
 
-  const { chartData, optimalLag, maxCorrelation, sampleSize, interpretation, scenarioHints, halfLife } = analysis;
+  const {
+    chartData,
+    optimalLag,
+    maxCorrelation,
+    sampleSize,
+    interpretation,
+    scenarioHints,
+    halfLife,
+    expectedTmax,
+    tmaxMatch,
+    lagMatchQuality,
+    recommendation
+  } = analysis;
   const color = medication.color ?? '#8b5cf6';
   const [showHelp, setShowHelp] = useState(false);
 
@@ -215,8 +303,9 @@ export default function LagCorrelationChart({
           Correlação Temporal: {medication.name} → Humor
         </CardTitle>
       </CardHeader>
-      
+
       <CardContent className="space-y-4">
+        {/* Main interpretation card */}
         <GlassCard className="p-4">
           <div className="flex items-start gap-3">
             <div className="p-2 rounded-lg bg-primary/10">
@@ -225,17 +314,74 @@ export default function LagCorrelationChart({
               {interpretation.icon === 'clock' && <Clock className="w-5 h-5 text-blue-500" />}
               {interpretation.icon === 'neutral' && <Lightning className="w-5 h-5 text-muted-foreground" />}
             </div>
-            <div>
+            <div className="flex-1">
               <p className="font-medium">{interpretation.summary}</p>
               <p className="text-sm text-muted-foreground mt-1">{interpretation.detail}</p>
-              <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
-                <span>r = {maxCorrelation.toFixed(3)}</span>
+              <div className="flex flex-wrap gap-3 mt-2 text-xs text-muted-foreground">
+                <span className="font-mono">r = {maxCorrelation.toFixed(3)}</span>
                 <span>Lag ótimo: {optimalLag}h</span>
                 <span>n = {sampleSize}</span>
               </div>
             </div>
           </div>
         </GlassCard>
+
+        {/* Tmax comparison card */}
+        <div className="grid grid-cols-2 gap-3">
+          <GlassCard className="p-3 text-center">
+            <div className="text-xs text-muted-foreground mb-1">Lag Observado</div>
+            <div className="flex items-center justify-center gap-2">
+              <Target className="w-4 h-4 text-primary" />
+              <span className="text-xl font-bold">{optimalLag}h</span>
+            </div>
+            <div className="text-[10px] text-muted-foreground mt-1">
+              Melhor correlação
+            </div>
+          </GlassCard>
+          <GlassCard className={`p-3 text-center ${tmaxMatch ? 'border-green-500/30' : ''}`}>
+            <div className="text-xs text-muted-foreground mb-1">Tmax Esperado</div>
+            <div className="flex items-center justify-center gap-2">
+              <Lightning className="w-4 h-4 text-yellow-500" />
+              <span className="text-xl font-bold">{expectedTmax}h</span>
+            </div>
+            <div className="text-[10px] text-muted-foreground mt-1">
+              Pico teórico
+            </div>
+          </GlassCard>
+        </div>
+
+        {/* Match quality indicator */}
+        <div className={`flex items-center gap-2 p-3 rounded-lg text-sm ${
+          lagMatchQuality === 'excelente' ? 'bg-green-500/10 text-green-700' :
+          lagMatchQuality === 'boa' ? 'bg-blue-500/10 text-blue-700' :
+          lagMatchQuality === 'diferente' ? 'bg-yellow-500/10 text-yellow-700' :
+          'bg-muted text-muted-foreground'
+        }`}>
+          {lagMatchQuality === 'excelente' && <CheckCircle className="w-4 h-4" weight="fill" />}
+          {lagMatchQuality === 'boa' && <CheckCircle className="w-4 h-4" />}
+          {lagMatchQuality === 'diferente' && <Info className="w-4 h-4" />}
+          {lagMatchQuality === 'atipica' && <WarningCircle className="w-4 h-4" />}
+          <span>
+            {lagMatchQuality === 'excelente' && 'Concordância excelente com farmacocinética esperada'}
+            {lagMatchQuality === 'boa' && 'Boa concordância com perfil farmacocinético'}
+            {lagMatchQuality === 'diferente' && 'Lag diferente do esperado - pode indicar resposta individual'}
+            {lagMatchQuality === 'atipica' && 'Padrão atípico - considere fatores externos'}
+          </span>
+        </div>
+
+        {/* Recommendation */}
+        <div className={`flex items-start gap-2 p-3 rounded-lg text-sm ${
+          recommendation.type === 'success' ? 'bg-green-500/10' :
+          recommendation.type === 'warning' ? 'bg-yellow-500/10' :
+          'bg-blue-500/10'
+        }`}>
+          <Lightbulb className={`w-4 h-4 mt-0.5 shrink-0 ${
+            recommendation.type === 'success' ? 'text-green-600' :
+            recommendation.type === 'warning' ? 'text-yellow-600' :
+            'text-blue-600'
+          }`} />
+          <span>{recommendation.text}</span>
+        </div>
 
         <div className="h-[250px]">
           <ResponsiveContainer width="100%" height="100%">
@@ -263,17 +409,34 @@ export default function LagCorrelationChart({
                   return (
                     <div className="bg-card border rounded-lg p-2 shadow-lg text-sm">
                       <div className="font-medium">{point.label}</div>
-                      <div>r = {point.correlation.toFixed(3)}</div>
+                      <div className="font-mono">r = {point.correlation.toFixed(3)}</div>
                       {point.isOptimal && (
-                        <div className="text-xs text-primary mt-1">Lag ótimo</div>
+                        <div className="text-xs text-primary mt-1 font-medium">← Lag ótimo observado</div>
+                      )}
+                      {point.isTmax && (
+                        <div className="text-xs text-yellow-600 mt-1">← Tmax teórico</div>
                       )}
                     </div>
                   );
                 }}
               />
-              
+
               <ReferenceLine y={0} stroke="#888" strokeDasharray="3 3" />
               <ReferenceLine x={0} stroke="#888" strokeDasharray="3 3" />
+
+              {/* Tmax reference line */}
+              <ReferenceLine
+                x={expectedTmax}
+                stroke="#eab308"
+                strokeDasharray="5 5"
+                strokeWidth={2}
+                label={{
+                  value: 'Tmax',
+                  position: 'top',
+                  fontSize: 10,
+                  fill: '#eab308'
+                }}
+              />
               
               <Bar
                 dataKey="correlation"
