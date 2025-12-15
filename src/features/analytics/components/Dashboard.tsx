@@ -12,6 +12,8 @@ import CorrelationInsights from './CorrelationInsights';
 import StreaksAndProgress from './StreaksAndProgress';
 import SimpleTestDataGenerator from './SimpleTestDataGenerator';
 import AdvancedCorrelationsView from './AdvancedCorrelationsView';
+import TemporalAdherenceCard from './TemporalAdherenceCard';
+import ConcentrationStabilityCard from './ConcentrationStabilityCard';
 
 interface DashboardProps {
   medications: Medication[];
@@ -173,7 +175,17 @@ export default function Dashboard({ medications, doses, moodEntries, cognitiveTe
           />
         </TabsContent>
 
-        <TabsContent value="progress" className="mt-6">
+        <TabsContent value="progress" className="mt-6 space-y-6">
+          <ConcentrationStabilityCard
+            medications={medications}
+            doses={doses}
+            moodEntries={moodEntries}
+          />
+          <TemporalAdherenceCard
+            medications={medications}
+            doses={doses}
+            moodEntries={moodEntries}
+          />
           <StreaksAndProgress
             doses={doses}
             moodEntries={moodEntries}

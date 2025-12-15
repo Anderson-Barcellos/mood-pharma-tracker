@@ -21,6 +21,12 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/shared/ui/collapsible';
 import { useState } from 'react';
 import type { Medication, MedicationDose, MoodEntry } from '@/shared/types';
+import { StatisticsEngine } from '@/features/analytics/utils/statistics-engine';
+import { 
+  isChronicMedication,
+  calculateConcentration,
+  getAdjustedHalfLife 
+} from '@/features/analytics/utils/pharmacokinetics';
 
 interface CorrelationInsightsProps {
   medications: Medication[];
@@ -43,111 +49,19 @@ interface CorrelationResult {
   medicationId: string;
   medicationName: string;
   medicationColor?: string;
+  lagHours: number;
   correlation: number;
   pValue: number;
+  adjustedPValue?: number;
   sampleSize: number;
-  avgMoodWithDose: number;
-  avgMoodWithoutDose: number;
-  daysWithDose: number;
-  daysWithoutDose: number;
+  avgMoodHighConc: number;
+  avgMoodLowConc: number;
+  highConcSamples: number;
+  lowConcSamples: number;
   bestTimeOfDay?: string;
   peakEffectHours?: number;
   isSignificant: boolean;
-}
-
-function calculateCorrelationWithPValue(x: number[], y: number[]): { r: number; pValue: number } {
-  if (x.length !== y.length || x.length < 3) return { r: 0, pValue: 1 };
-
-  const n = x.length;
-  const sumX = x.reduce((a, b) => a + b, 0);
-  const sumY = y.reduce((a, b) => a + b, 0);
-  const sumXY = x.reduce((acc, xi, i) => acc + xi * y[i], 0);
-  const sumX2 = x.reduce((acc, xi) => acc + xi * xi, 0);
-  const sumY2 = y.reduce((acc, yi) => acc + yi * yi, 0);
-
-  const numerator = n * sumXY - sumX * sumY;
-  const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
-
-  if (denominator === 0) return { r: 0, pValue: 1 };
-
-  const r = numerator / denominator;
-
-  // Calculate t-statistic and p-value (two-tailed)
-  if (Math.abs(r) >= 1) return { r, pValue: 0 };
-
-  const t = r * Math.sqrt((n - 2) / (1 - r * r));
-  const df = n - 2;
-
-  // Approximate p-value using Student's t-distribution
-  // Using a simple approximation for small samples
-  const pValue = 2 * (1 - tCDF(Math.abs(t), df));
-
-  return { r, pValue };
-}
-
-// Approximation of Student's t CDF
-function tCDF(t: number, df: number): number {
-  const x = df / (df + t * t);
-  const a = df / 2;
-  const b = 0.5;
-
-  // Beta function approximation for incomplete beta
-  // Simple approximation good enough for p-value estimation
-  if (t < 0) return 0.5 * incompleteBeta(x, a, b);
-  return 1 - 0.5 * incompleteBeta(x, a, b);
-}
-
-function incompleteBeta(x: number, a: number, b: number): number {
-  // Simple approximation using continued fraction
-  const maxIterations = 100;
-  const epsilon = 1e-10;
-
-  if (x === 0) return 0;
-  if (x === 1) return 1;
-
-  let result = 1;
-  let term = 1;
-
-  for (let i = 1; i <= maxIterations; i++) {
-    term *= (a + i - 1) * x / i;
-    result += term;
-    if (Math.abs(term) < epsilon) break;
-  }
-
-  const beta = Math.exp(
-    lgamma(a) + lgamma(b) - lgamma(a + b)
-  );
-
-  return Math.pow(x, a) * Math.pow(1 - x, b) * result / (a * beta);
-}
-
-function lgamma(x: number): number {
-  // Lanczos approximation for log-gamma
-  const g = 7;
-  const c = [
-    0.99999999999980993,
-    676.5203681218851,
-    -1259.1392167224028,
-    771.32342877765313,
-    -176.61502916214059,
-    12.507343278686905,
-    -0.13857109526572012,
-    9.9843695780195716e-6,
-    1.5056327351493116e-7
-  ];
-
-  if (x < 0.5) {
-    return Math.log(Math.PI / Math.sin(Math.PI * x)) - lgamma(1 - x);
-  }
-
-  x -= 1;
-  let a = c[0];
-  for (let i = 1; i < g + 2; i++) {
-    a += c[i] / (x + i);
-  }
-
-  const t = x + g + 0.5;
-  return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+  concentrationMethod: 'continuous' | 'binary';
 }
 
 function getCorrelationStrength(r: number): { label: string; color: string; description: string } {
@@ -181,51 +95,172 @@ function getSignificanceLabel(pValue: number): { label: string; stars: string } 
   return { label: 'Não significativo', stars: '' };
 }
 
+function getEffectSizeInterpretation(moodDiff: number): {
+  label: string;
+  color: string;
+  clinical: string;
+} {
+  const absDiff = Math.abs(moodDiff);
+  if (absDiff >= 1.5) return {
+    label: 'Grande',
+    color: 'text-green-600',
+    clinical: 'Efeito clínico substancial'
+  };
+  if (absDiff >= 0.8) return {
+    label: 'Médio',
+    color: 'text-blue-600',
+    clinical: 'Efeito clínico moderado'
+  };
+  if (absDiff >= 0.4) return {
+    label: 'Pequeno',
+    color: 'text-amber-600',
+    clinical: 'Efeito clínico leve'
+  };
+  return {
+    label: 'Mínimo',
+    color: 'text-gray-500',
+    clinical: 'Sem efeito clínico relevante'
+  };
+}
+
 export default function CorrelationInsights({ medications, doses, moodEntries }: CorrelationInsightsProps) {
   const [showMethodology, setShowMethodology] = useState(false);
 
+  const windowed = useMemo(() => {
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const dayStart = (timestamp: number) => {
+      const d = new Date(timestamp);
+      d.setHours(0, 0, 0, 0);
+      return d.getTime();
+    };
+
+    const allTimestamps = [
+      ...moodEntries.map(m => m.timestamp),
+      ...doses.map(d => d.timestamp),
+    ].filter(t => t > 0);
+
+    if (allTimestamps.length === 0) {
+      const now = dayStart(Date.now());
+      return {
+        startDay: now,
+        endDay: now,
+        endExclusive: now + DAY_MS,
+        moodEntries: [] as MoodEntry[],
+        doses: [] as MedicationDose[],
+        days: 1,
+      };
+    }
+
+    const endDay = dayStart(Math.max(...allTimestamps));
+    const minDay = dayStart(Math.min(...allTimestamps));
+    const startDay = minDay;
+    const endExclusive = endDay + DAY_MS;
+
+    return {
+      startDay,
+      endDay,
+      endExclusive,
+      moodEntries: moodEntries.filter(m => m.timestamp >= startDay && m.timestamp < endExclusive),
+      doses: doses.filter(d => d.timestamp >= startDay && d.timestamp < endExclusive),
+      days: Math.round((endDay - startDay) / DAY_MS) + 1,
+    };
+  }, [moodEntries, doses]);
+
   const correlations = useMemo(() => {
     const results: CorrelationResult[] = [];
+    const HOUR_MS = 60 * 60 * 1000;
+    const bodyWeight = 70;
 
     for (const medication of medications) {
-      const medDoses = doses.filter(d => d.medicationId === medication.id);
-      if (medDoses.length < 7) continue;
+      const medDoses = windowed.doses.filter(d => d.medicationId === medication.id);
+      if (medDoses.length < 5) continue;
 
-      const doseDays = new Set(medDoses.map(d => new Date(d.timestamp).toDateString()));
+      if (windowed.moodEntries.length < 7) continue;
 
-      const moodByDay = new Map<string, number[]>();
-      for (const mood of moodEntries) {
-        const day = new Date(mood.timestamp).toDateString();
-        if (!moodByDay.has(day)) moodByDay.set(day, []);
-        moodByDay.get(day)!.push(mood.moodScore);
-      }
+      const isChronic = isChronicMedication(medication);
+      const candidateLagsHours = isChronic 
+        ? [0, 6, 12, 24, 48, 72]
+        : [0, 1, 3, 6];
 
-      const daysWithDose: number[] = [];
-      const daysWithoutDose: number[] = [];
-      const allDailyMoods: number[] = [];
-      const dosePresence: number[] = [];
+      type LagCandidate = {
+        lagHours: number;
+        correlation: number;
+        pValue: number;
+        sampleSize: number;
+        avgMoodHighConc: number;
+        avgMoodLowConc: number;
+        highConcSamples: number;
+        lowConcSamples: number;
+      };
 
-      for (const [day, moods] of moodByDay) {
-        const avgMood = moods.reduce((a, b) => a + b, 0) / moods.length;
-        allDailyMoods.push(avgMood);
+      const candidates: LagCandidate[] = [];
 
-        if (doseDays.has(day)) {
-          daysWithDose.push(avgMood);
-          dosePresence.push(1);
-        } else {
-          daysWithoutDose.push(avgMood);
-          dosePresence.push(0);
+      for (const lagHours of candidateLagsHours) {
+        const lagMs = lagHours * HOUR_MS;
+        const concentrations: number[] = [];
+        const moods: number[] = [];
+
+        for (const mood of windowed.moodEntries) {
+          const targetTime = mood.timestamp - lagMs;
+          const concentration = calculateConcentration(
+            medication,
+            medDoses,
+            targetTime,
+            bodyWeight
+          );
+
+          if (concentration > 0) {
+            concentrations.push(concentration);
+            moods.push(mood.moodScore);
+          }
         }
+
+        if (concentrations.length < 7) {
+          continue;
+        }
+
+        const corr = StatisticsEngine.pearsonCorrelation(concentrations, moods);
+
+        const medianConc = [...concentrations].sort((a, b) => a - b)[
+          Math.floor(concentrations.length / 2)
+        ];
+
+        const highConc: number[] = [];
+        const lowConc: number[] = [];
+
+        for (let i = 0; i < concentrations.length; i++) {
+          if (concentrations[i] >= medianConc) {
+            highConc.push(moods[i]);
+          } else {
+            lowConc.push(moods[i]);
+          }
+        }
+
+        const avgMoodHighConc = highConc.length > 0
+          ? highConc.reduce((a, b) => a + b, 0) / highConc.length
+          : 0;
+        const avgMoodLowConc = lowConc.length > 0
+          ? lowConc.reduce((a, b) => a + b, 0) / lowConc.length
+          : 0;
+
+        candidates.push({
+          lagHours,
+          correlation: corr.value,
+          pValue: corr.pValue,
+          sampleSize: corr.sampleSize,
+          avgMoodHighConc,
+          avgMoodLowConc,
+          highConcSamples: highConc.length,
+          lowConcSamples: lowConc.length,
+        });
       }
 
-      const { r: correlation, pValue } = calculateCorrelationWithPValue(dosePresence, allDailyMoods);
+      const viable = candidates.filter(c => c.sampleSize >= 7);
+      const picked = (viable.length > 0 ? viable : candidates).reduce((best, curr) => {
+        return Math.abs(curr.correlation) > Math.abs(best.correlation) ? curr : best;
+      }, candidates[0]);
 
-      const avgMoodWithDose = daysWithDose.length > 0
-        ? daysWithDose.reduce((a, b) => a + b, 0) / daysWithDose.length
-        : 0;
-      const avgMoodWithoutDose = daysWithoutDose.length > 0
-        ? daysWithoutDose.reduce((a, b) => a + b, 0) / daysWithoutDose.length
-        : 0;
+      if (!picked) continue;
 
       const dosesByHour = new Map<number, number[]>();
       for (const dose of medDoses) {
@@ -233,7 +268,7 @@ export default function CorrelationInsights({ medications, doses, moodEntries }:
         const hour = doseDate.getHours();
         const day = doseDate.toDateString();
 
-        const dayMoods = moodEntries.filter(m => {
+        const dayMoods = windowed.moodEntries.filter(m => {
           const moodDate = new Date(m.timestamp);
           return moodDate.toDateString() === day &&
             moodDate.getTime() > dose.timestamp &&
@@ -261,62 +296,81 @@ export default function CorrelationInsights({ medications, doses, moodEntries }:
         medicationId: medication.id,
         medicationName: medication.name,
         medicationColor: medication.color,
-        correlation,
-        pValue,
-        sampleSize: moodByDay.size,
-        avgMoodWithDose,
-        avgMoodWithoutDose,
-        daysWithDose: daysWithDose.length,
-        daysWithoutDose: daysWithoutDose.length,
+        lagHours: picked.lagHours,
+        correlation: picked.correlation,
+        pValue: picked.pValue,
+        sampleSize: picked.sampleSize,
+        avgMoodHighConc: picked.avgMoodHighConc,
+        avgMoodLowConc: picked.avgMoodLowConc,
+        highConcSamples: picked.highConcSamples,
+        lowConcSamples: picked.lowConcSamples,
         bestTimeOfDay: bestHour >= 0 ? `${bestHour.toString().padStart(2, '0')}:00` : undefined,
         peakEffectHours: medication.halfLife ? Math.round(medication.halfLife * 0.7) : undefined,
-        isSignificant: pValue < 0.05,
+        isSignificant: picked.pValue < 0.05,
+        concentrationMethod: 'continuous',
+      });
+    }
+
+    const allPValues = results.map(r => r.pValue);
+    if (allPValues.length > 1) {
+      const fdrResult = StatisticsEngine.benjaminiHochbergFDR(allPValues, 0.05);
+      results.forEach((r, i) => {
+        r.adjustedPValue = fdrResult.adjustedPValues[i];
+        r.isSignificant = fdrResult.significantIndices.includes(i);
       });
     }
 
     return results.sort((a, b) => Math.abs(b.correlation) - Math.abs(a.correlation));
-  }, [medications, doses, moodEntries]);
+  }, [medications, windowed.doses, windowed.moodEntries]);
 
   const insights = useMemo(() => {
     const result: Insight[] = [];
 
     for (const corr of correlations) {
-      // Only generate insights for significant correlations or larger effects
       const hasSignificantCorrelation = corr.isSignificant && Math.abs(corr.correlation) >= 0.15;
-      const hasLargeEffect = Math.abs(corr.avgMoodWithDose - corr.avgMoodWithoutDose) >= 0.5;
+      const diff = corr.avgMoodHighConc - corr.avgMoodLowConc;
+      const hasLargeEffect = Math.abs(diff) >= 0.5;
 
       if (hasSignificantCorrelation || hasLargeEffect) {
-        const diff = corr.avgMoodWithDose - corr.avgMoodWithoutDose;
-        const percentDiff = corr.avgMoodWithoutDose > 0
-          ? Math.abs(diff / corr.avgMoodWithoutDose * 100).toFixed(0)
-          : Math.abs(diff * 10).toFixed(0);
+        const lagLabel = corr.lagHours === 0
+          ? 'simultaneamente'
+          : corr.lagHours < 24
+          ? `${corr.lagHours}h antes`
+          : `${Math.round(corr.lagHours / 24)}d antes`;
 
-        // Determine confidence based on sample size and p-value
         const confidence: 'alta' | 'media' | 'baixa' =
-          corr.pValue < 0.01 && corr.sampleSize >= 20 ? 'alta' :
-          corr.pValue < 0.05 && corr.sampleSize >= 10 ? 'media' : 'baixa';
+          (corr.adjustedPValue ?? corr.pValue) < 0.01 && corr.sampleSize >= 20 ? 'alta' :
+          (corr.adjustedPValue ?? corr.pValue) < 0.05 && corr.sampleSize >= 10 ? 'media' : 'baixa';
 
-        if (diff > 0.3) {
+        const fdrNote = corr.adjustedPValue && corr.adjustedPValue !== corr.pValue
+          ? ` (FDR-corrigido: p=${corr.adjustedPValue.toFixed(3)})`
+          : '';
+
+        if (corr.correlation > 0.15) {
           result.push({
             id: `positive-${corr.medicationId}`,
             type: 'positive',
-            title: `${corr.medicationName} está associado a melhor humor`,
-            description: `Humor médio ${diff.toFixed(1)} pontos maior nos dias com dose`,
-            detail: `Baseado em ${corr.daysWithDose} dias com dose vs ${corr.daysWithoutDose} dias sem. ` +
-                    `${corr.isSignificant ? 'Diferença estatisticamente significativa.' : 'Pode ser coincidência - mais dados necessários.'}`,
+            title: `${corr.medicationName}: concentração correlaciona com melhor humor`,
+            description: `Humor ${diff.toFixed(1)} pts maior em altas vs baixas concentrações (${lagLabel})`,
+            detail: `Correlação de Pearson: r=${corr.correlation.toFixed(2)} (p=${corr.pValue.toFixed(3)}${fdrNote}). ` +
+                    `Baseado em ${corr.sampleSize} registros de humor com concentração plasmática calculada. ` +
+                    `Alta concentração (≥mediana): ${corr.avgMoodHighConc.toFixed(1)}/10 (n=${corr.highConcSamples}). ` +
+                    `Baixa concentração (<mediana): ${corr.avgMoodLowConc.toFixed(1)}/10 (n=${corr.lowConcSamples}). ` +
+                    `${corr.isSignificant ? 'Diferença estatisticamente significativa após correção FDR.' : 'Não significativo após correção para múltiplas comparações.'}`,
             value: corr.correlation,
             confidence,
             icon: <TrendUp className="w-5 h-5 text-green-500" weight="bold" />
           });
-        } else if (diff < -0.3) {
+        } else if (corr.correlation < -0.15) {
           result.push({
             id: `negative-${corr.medicationId}`,
             type: 'negative',
-            title: `Atenção: ${corr.medicationName} e humor`,
-            description: `Humor médio ${Math.abs(diff).toFixed(1)} pontos menor nos dias com dose`,
-            detail: `Isso não significa que o medicamento causa o efeito. ` +
-                    `Pode ser que você toma o medicamento quando já está se sentindo pior (dosagem reativa). ` +
-                    `${corr.daysWithDose} dias analisados.`,
+            title: `Atenção: ${corr.medicationName} - concentração e humor`,
+            description: `Humor ${Math.abs(diff).toFixed(1)} pts menor em altas concentrações (${lagLabel})`,
+            detail: `Correlação negativa: r=${corr.correlation.toFixed(2)} (p=${corr.pValue.toFixed(3)}${fdrNote}). ` +
+                    `Isso pode indicar: (1) efeito adverso em doses altas, (2) dosagem reativa (toma mais quando pior), ` +
+                    `ou (3) fase de ajuste de dose. Analise com seu médico. ` +
+                    `Baseado em ${corr.sampleSize} registros.`,
             value: corr.correlation,
             confidence,
             icon: <TrendDown className="w-5 h-5 text-red-500" weight="bold" />
@@ -326,11 +380,11 @@ export default function CorrelationInsights({ medications, doses, moodEntries }:
     }
 
     // Weekend/weekday patterns
-    const weekdayMoods = moodEntries.filter(m => {
+    const weekdayMoods = windowed.moodEntries.filter(m => {
       const day = new Date(m.timestamp).getDay();
       return day !== 0 && day !== 6;
     });
-    const weekendMoods = moodEntries.filter(m => {
+    const weekendMoods = windowed.moodEntries.filter(m => {
       const day = new Date(m.timestamp).getDay();
       return day === 0 || day === 6;
     });
@@ -354,12 +408,12 @@ export default function CorrelationInsights({ medications, doses, moodEntries }:
     }
 
     // Time of day patterns
-    const morningMoods = moodEntries.filter(m => new Date(m.timestamp).getHours() < 12);
-    const afternoonMoods = moodEntries.filter(m => {
+    const morningMoods = windowed.moodEntries.filter(m => new Date(m.timestamp).getHours() < 12);
+    const afternoonMoods = windowed.moodEntries.filter(m => {
       const h = new Date(m.timestamp).getHours();
       return h >= 12 && h < 18;
     });
-    const eveningMoods = moodEntries.filter(m => new Date(m.timestamp).getHours() >= 18);
+    const eveningMoods = windowed.moodEntries.filter(m => new Date(m.timestamp).getHours() >= 18);
 
     const periods = [
       { name: 'manhã', moods: morningMoods },
@@ -392,9 +446,9 @@ export default function CorrelationInsights({ medications, doses, moodEntries }:
     }
 
     return result;
-  }, [correlations, moodEntries]);
+  }, [correlations, windowed.moodEntries]);
 
-  if (medications.length === 0 || doses.length < 10 || moodEntries.length < 10) {
+  if (medications.length === 0 || windowed.doses.length < 10 || windowed.moodEntries.length < 10) {
     return (
       <Card>
         <CardHeader>
@@ -405,6 +459,11 @@ export default function CorrelationInsights({ medications, doses, moodEntries }:
           <CardDescription>
             Continue registrando para descobrir padrões
           </CardDescription>
+          <div className="pt-3">
+            <div className="text-xs text-muted-foreground">
+              Análise: <span className="font-medium">{windowed.days} dias de dados</span>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="text-center py-8 text-muted-foreground">
@@ -414,7 +473,7 @@ export default function CorrelationInsights({ medications, doses, moodEntries }:
               Mínimo: 10 doses e 10 registros de humor
             </p>
             <div className="mt-4 text-xs">
-              <p>Atualmente: {doses.length} doses, {moodEntries.length} registros de humor</p>
+              <p>Atualmente: {windowed.doses.length} doses, {windowed.moodEntries.length} registros de humor</p>
             </div>
           </div>
         </CardContent>
@@ -424,6 +483,10 @@ export default function CorrelationInsights({ medications, doses, moodEntries }:
 
   return (
     <div className="space-y-6">
+      <div className="text-xs text-muted-foreground mb-2">
+        Análise: <span className="font-medium">{windowed.days} dias de dados</span>
+      </div>
+
       {/* Insights Section */}
       {insights.length > 0 && (
         <Card>
@@ -524,11 +587,11 @@ export default function CorrelationInsights({ medications, doses, moodEntries }:
               <div className="grid gap-2">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 bg-green-500 rounded" />
-                  <span><strong>r positivo:</strong> Humor tende a ser melhor nos dias com medicamento</span>
+                  <span><strong>r positivo:</strong> Humor tende a ser melhor no período analisado após a dose</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 bg-red-500 rounded" />
-                  <span><strong>r negativo:</strong> Humor tende a ser menor (pode ser dosagem reativa)</span>
+                  <span><strong>r negativo:</strong> Humor tende a ser menor (pode ser dosagem reativa ou confundidores)</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="font-mono">***</span>
@@ -543,9 +606,17 @@ export default function CorrelationInsights({ medications, doses, moodEntries }:
                   <span>p &lt; 0.05 (possivelmente significativo)</span>
                 </div>
               </div>
-              <p className="text-muted-foreground mt-2">
-                Correlação não implica causalidade. Converse com seu médico sobre qualquer padrão observado.
-              </p>
+              <div className="pt-2 space-y-1 text-muted-foreground">
+                <p><strong>Novo método (concentração contínua vs binário):</strong></p>
+                <p>Este componente agora usa concentração plasmática calculada via farmacocinética, não presença/ausência de dose.</p>
+                <p>Para medicamentos crônicos (SSRI, estabilizadores), testa delays de 0–72h para encontrar lag ideal.</p>
+                <p><strong>Correção FDR (Benjamini-Hochberg):</strong> Controla falsos positivos ao testar múltiplas correlações simultaneamente.</p>
+                <p><strong>Expectativas por classe:</strong></p>
+                <p>- Estimulantes: lag 0-6h, correlação rápida com foco/energia</p>
+                <p>- SSRIs/SNRIs: lag 24-48h, efeito crônico em humor e ansiedade</p>
+                <p>- Estabilizadores: lag 24-72h, variabilidade importa mais que nível absoluto</p>
+                <p>Correlação não implica causalidade. Discuta achados com seu médico.</p>
+              </div>
             </div>
           )}
 
@@ -569,9 +640,19 @@ export default function CorrelationInsights({ medications, doses, moodEntries }:
                       />
                       <div>
                         <span className="font-medium">{corr.medicationName}</span>
+                        {corr.lagHours > 0 && (
+                          <span className="ml-2 text-[10px] text-muted-foreground">
+                            lag {corr.lagHours < 24 ? `${corr.lagHours}h` : `${Math.round(corr.lagHours / 24)}d`}
+                          </span>
+                        )}
                         {significance.stars && (
                           <span className="ml-2 text-primary font-mono text-sm" title={significance.label}>
                             {significance.stars}
+                          </span>
+                        )}
+                        {corr.adjustedPValue && corr.adjustedPValue !== corr.pValue && (
+                          <span className="ml-2 text-[10px] text-blue-500" title="FDR-corrected">
+                            FDR
                           </span>
                         )}
                       </div>
@@ -606,14 +687,19 @@ export default function CorrelationInsights({ medications, doses, moodEntries }:
                   </div>
 
                   {/* Stats grid */}
+                  {corr.lagHours > 0 && (
+                    <div className="text-[10px] text-muted-foreground">
+                      Concentração medida {corr.lagHours < 24 ? `${corr.lagHours}h` : `${Math.round(corr.lagHours / 24)}d`} antes do humor
+                    </div>
+                  )}
                   <div className="grid grid-cols-3 gap-3 text-center text-xs">
                     <div className="bg-green-500/10 rounded-lg p-2">
-                      <div className="text-muted-foreground">Com dose</div>
+                      <div className="text-muted-foreground">Alta conc.</div>
                       <div className="font-semibold text-green-600">
-                        {corr.avgMoodWithDose.toFixed(1)}/10
+                        {corr.avgMoodHighConc.toFixed(1)}/10
                       </div>
                       <div className="text-[10px] text-muted-foreground">
-                        {corr.daysWithDose} dias
+                        {corr.highConcSamples} registros
                       </div>
                     </div>
                     <div className="bg-muted/50 rounded-lg p-2">
@@ -624,23 +710,48 @@ export default function CorrelationInsights({ medications, doses, moodEntries }:
                       </div>
                     </div>
                     <div className="bg-gray-500/10 rounded-lg p-2">
-                      <div className="text-muted-foreground">Sem dose</div>
+                      <div className="text-muted-foreground">Baixa conc.</div>
                       <div className="font-semibold text-gray-600">
-                        {corr.avgMoodWithoutDose.toFixed(1)}/10
+                        {corr.avgMoodLowConc.toFixed(1)}/10
                       </div>
                       <div className="text-[10px] text-muted-foreground">
-                        {corr.daysWithoutDose} dias
+                        {corr.lowConcSamples} registros
                       </div>
                     </div>
                   </div>
+
+                  {/* Effect Size Clinical Interpretation */}
+                  {(() => {
+                    const diff = corr.avgMoodHighConc - corr.avgMoodLowConc;
+                    const effectSize = getEffectSizeInterpretation(diff);
+                    return (
+                      <div className="flex items-center justify-between bg-muted/20 rounded-lg p-2 text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">Efeito Clínico:</span>
+                          <span className={`font-semibold ${effectSize.color}`}>
+                            {effectSize.label}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">
+                            ({effectSize.clinical})
+                          </span>
+                        </div>
+                        <span className={`font-mono ${diff > 0 ? 'text-green-600' : diff < 0 ? 'text-red-600' : ''}`}>
+                          {diff > 0 ? '+' : ''}{diff.toFixed(1)} pts
+                        </span>
+                      </div>
+                    );
+                  })()}
 
                   {/* P-value info */}
                   <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t">
                     <span>
                       p-value: {corr.pValue < 0.001 ? '<0.001' : corr.pValue.toFixed(3)}
+                      {corr.adjustedPValue && (
+                        <> | FDR: {corr.adjustedPValue < 0.001 ? '<0.001' : corr.adjustedPValue.toFixed(3)}</>
+                      )}
                       {' '}({significance.label})
                     </span>
-                    <span>n = {corr.sampleSize} dias analisados</span>
+                    <span>n = {corr.sampleSize} registros</span>
                   </div>
                 </div>
               </GlassCard>

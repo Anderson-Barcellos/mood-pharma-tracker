@@ -16,7 +16,18 @@ import { GlassCard } from '@/shared/ui/glass-card';
 import { ToggleGroup, ToggleGroupItem } from '@/shared/ui/toggle-group';
 import { TrendUp, TrendDown, Clock, Lightning, Info, Pill, Brain, ArrowsClockwise } from '@phosphor-icons/react';
 import { StatisticsEngine } from '@/features/analytics/utils/statistics-engine';
-import { calculateConcentration, getPKMetrics } from '@/features/analytics/utils/pharmacokinetics';
+import {
+  getPKMetrics,
+  calculateAdherenceEffectLag,
+  isChronicMedication
+} from '@/features/analytics/utils/pharmacokinetics';
+import {
+  getDefaultConcentrationMode,
+  getTrendWindowMs,
+  sampleConcentrationAtTimes,
+  sampleTrendConcentrationAtTimes,
+  type ConcentrationSeriesMode,
+} from '@/features/analytics/utils/concentration-series';
 import type { Medication, MedicationDose, MoodEntry } from '@/shared/types';
 
 interface LagCorrelationChartProps {
@@ -46,6 +57,12 @@ export default function LagCorrelationChart({
 }: LagCorrelationChartProps) {
   const [correlationMethod, setCorrelationMethod] = useState<'pearson' | 'spearman'>('pearson');
   const [seriesTransform, setSeriesTransform] = useState<'levels' | 'differences'>('levels');
+  const [concentrationMode, setConcentrationMode] = useState<ConcentrationSeriesMode>(() =>
+    getDefaultConcentrationMode(medication)
+  );
+
+  const adherenceMetrics = useMemo(() => calculateAdherenceEffectLag(medication), [medication]);
+  const isChronic = useMemo(() => isChronicMedication(medication), [medication]);
 
   const analysis = useMemo(() => {
     const medDoses = doses.filter(d => d.medicationId === medication.id);
@@ -62,7 +79,8 @@ export default function LagCorrelationChart({
     const pk = getPKMetrics(medication);
     const tmax = pk?.Tmax ?? 2;
     const lagFromPk = pk ? Math.max(pk.Tmax * 4, pk.halfLife * 2) : 0;
-    const lagLimit = Math.max(1, Math.min(72, Math.round(Math.max(maxLagHours, lagFromPk))));
+    const chronicLagHours = isChronic ? adherenceMetrics.adherenceLagHours : 0;
+    const lagLimit = Math.max(1, Math.min(120, Math.round(Math.max(maxLagHours, lagFromPk, chronicLagHours))));
     const minPairs = 5;
     const allTimestamps = [...medDoses.map(d => d.timestamp), ...moodEntries.map(m => m.timestamp)];
     const rawStartTime = Math.floor(Math.min(...allTimestamps) / hourlyInterval) * hourlyInterval;
@@ -71,14 +89,15 @@ export default function LagCorrelationChart({
     const startTime = Math.max(rawStartTime, firstDoseHour);
     const trimmedPreDose = startTime > rawStartTime;
     const endTime = Math.ceil(Math.max(...allTimestamps) / hourlyInterval) * hourlyInterval;
-    const concentrations: number[] = [];
     const timestamps: number[] = [];
 
     for (let t = startTime; t <= endTime; t += hourlyInterval) {
-      const conc = calculateConcentration(medication, medDoses, t, bodyWeight);
-      concentrations.push(conc);
       timestamps.push(t);
     }
+
+    const concentrations = concentrationMode === 'trend'
+      ? sampleTrendConcentrationAtTimes(medication, medDoses, timestamps, bodyWeight)
+      : sampleConcentrationAtTimes(medication, medDoses, timestamps, bodyWeight);
 
     const moodByHour = new Map<number, number[]>();
     for (const mood of moodEntries) {
@@ -94,7 +113,7 @@ export default function LagCorrelationChart({
       }
       return NaN;
     });
-    const alignedConc = concentrations.map(c => (Number.isFinite(c) ? c : NaN));
+    const alignedConc = concentrations.map(c => (typeof c === 'number' && Number.isFinite(c) ? c : NaN));
     const alignedMood = moodValues.map(v => (Number.isFinite(v) ? v : NaN));
     const validPairs = alignedConc.reduce((count, c, idx) => {
       return count + (Number.isFinite(c) && Number.isFinite(alignedMood[idx]) ? 1 : 0);
@@ -229,7 +248,7 @@ export default function LagCorrelationChart({
       tmax,
       trimmedPreDose,
     };
-  }, [medication, doses, moodEntries, maxLagHours, bodyWeight, correlationMethod, seriesTransform]);
+  }, [medication, doses, moodEntries, maxLagHours, bodyWeight, correlationMethod, seriesTransform, concentrationMode, isChronic, adherenceMetrics]);
 
   if ('error' in analysis) {
     const { error } = analysis;
@@ -272,6 +291,9 @@ export default function LagCorrelationChart({
   const { chartData, optimalLag, maxCorrelation, sampleSize, interpretation, scenarioHints, halfLife, tmax, trimmedPreDose } = analysis;
   const color = medication.color ?? '#8b5cf6';
   const [showHelp, setShowHelp] = useState(false);
+  // Keep trend/instant default sensible when this component is reused for different meds
+  // (in practice it's one component per med, but this avoids sticky state in edge cases).
+  const defaultMode = getDefaultConcentrationMode(medication);
 
   return (
     <Card>
@@ -323,6 +345,28 @@ export default function LagCorrelationChart({
             </ToggleGroup>
           </div>
           <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Concentração</span>
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              size="sm"
+              value={concentrationMode}
+              onValueChange={(v) => v && setConcentrationMode(v as ConcentrationSeriesMode)}
+            >
+              <ToggleGroupItem value="instant">Cp</ToggleGroupItem>
+              <ToggleGroupItem value="trend">Tendência</ToggleGroupItem>
+            </ToggleGroup>
+            <button
+              type="button"
+              onClick={() => setConcentrationMode(defaultMode)}
+              className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+              title="Voltar ao padrão recomendado"
+            >
+              <ArrowsClockwise className="w-3 h-3" />
+              Auto
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">Série</span>
             <ToggleGroup
               type="single"
@@ -336,6 +380,12 @@ export default function LagCorrelationChart({
             </ToggleGroup>
           </div>
         </div>
+
+        {concentrationMode === 'trend' && (
+          <p className="text-[11px] text-muted-foreground text-center -mt-1">
+            Tendência = média móvel ~{Math.round(getTrendWindowMs(medication) / 3600000)}h (bom pra crônicos / atraso de adesão).
+          </p>
+        )}
 
         <div className="h-[250px]">
           <ResponsiveContainer width="100%" height="100%">
@@ -421,6 +471,22 @@ export default function LagCorrelationChart({
           </div>
         )}
 
+        {isChronic && (
+          <GlassCard variant="subtle" className="p-3 text-xs bg-blue-500/5">
+            <div className="flex items-start gap-2">
+              <Clock className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium text-blue-400">Medicamento de uso crônico</p>
+                <p className="text-muted-foreground mt-1">{adherenceMetrics.description}</p>
+                <p className="text-muted-foreground/70 mt-1">
+                  Para crônicos em steady-state, procure correlações em lags de ~{adherenceMetrics.adherenceLagDays} dias
+                  ({adherenceMetrics.adherenceLagHours}h) - este é o tempo esperado entre variação na adesão e impacto no humor.
+                </p>
+              </div>
+            </div>
+          </GlassCard>
+        )}
+
         <Collapsible open={showHelp} onOpenChange={setShowHelp}>
           <CollapsibleTrigger className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full justify-center py-2">
             <Info className="w-3 h-3" />
@@ -465,14 +531,25 @@ export default function LagCorrelationChart({
                 </tbody>
               </table>
               <div className="px-3 py-2 text-[10px] text-muted-foreground border-t bg-muted/20">
-                <strong>PK:</strong> Tmax = {tmax.toFixed(1)}h (pico), t½ = {halfLife}h (eliminacao).
-                A busca de lags vai até ~max(4x Tmax, 2x t½), com limite de 72h.
-                Lags ate ~2x Tmax sugerem efeito farmacologico direto.
+                <strong>PK deste fármaco:</strong> Tmax = {tmax.toFixed(1)}h (pico), t½ = {halfLife}h (eliminação).
                 <div className="mt-1">
-                  <strong>Método:</strong> Pearson = relação linear; Spearman = monotônica (mais robusta a outliers).
+                  <strong>Método:</strong> Pearson = relação linear; Spearman = monotônica (robusta a outliers).
                   {' '}
-                  <strong>Série:</strong> Níveis usa valores absolutos; Δ usa mudanças hora‑a‑hora para reduzir tendência/ciclo.
+                  <strong>Série:</strong> Níveis = valores absolutos; Δ = mudanças hora-a-hora.
                 </div>
+              </div>
+              <div className="px-3 py-2 text-[10px] text-muted-foreground border-t bg-blue-500/5">
+                <strong>Lags esperados por classe:</strong>
+                <ul className="mt-1 space-y-0.5 list-disc list-inside">
+                  <li><span className="text-orange-500">Estimulantes (Vyvanse, Ritalina):</span> 3-6h após dose (efeito agudo)</li>
+                  <li><span className="text-purple-500">SSRIs/SNRIs (Lexapro, Venlafaxina):</span> 24-72h (efeito crônico, variação de aderência)</li>
+                  <li><span className="text-green-500">Estabilizadores (Lamictal, Lítio):</span> 48-96h (variação de aderência)</li>
+                  <li><span className="text-blue-500">Benzodiazepínicos:</span> 1-4h (efeito agudo ansiolítico)</li>
+                  <li><span className="text-pink-500">Antipsicóticos:</span> 24-48h (efeito crônico)</li>
+                </ul>
+                <p className="mt-1 text-muted-foreground/70">
+                  Para crônicos em steady-state, o lag reflete tempo entre falha de aderência e impacto no humor.
+                </p>
               </div>
             </div>
           </CollapsibleContent>

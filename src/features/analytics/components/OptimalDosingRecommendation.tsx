@@ -18,7 +18,7 @@ import {
 } from '@phosphor-icons/react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/shared/ui/collapsible';
 import { useState } from 'react';
-import { getPKMetrics } from '@/features/analytics/utils/pharmacokinetics';
+import { getPKMetrics, isChronicMedication } from '@/features/analytics/utils/pharmacokinetics';
 import type { Medication, MedicationDose, MoodEntry } from '@/shared/types';
 
 interface OptimalDosingRecommendationProps {
@@ -107,6 +107,7 @@ export default function OptimalDosingRecommendation({
       if (!pkMetrics) continue;
 
       const { Tmax: tmax, halfLife } = pkMetrics;
+      const isChronic = isChronicMedication(medication);
 
       // Analyze mood patterns by hour after dose
       const hourlyMoods = new Map<number, number[]>();
@@ -222,6 +223,10 @@ export default function OptimalDosingRecommendation({
 
       // Warnings
       const warnings: string[] = [];
+
+      if (isChronic) {
+        warnings.push('Medicamento de uso crônico - o efeito terapêutico não depende do horário da dose. Priorize consistência no horário escolhido.');
+      }
 
       if (bestSampleSize < 10) {
         warnings.push('Poucos dados ainda - continue registrando para maior precisão');

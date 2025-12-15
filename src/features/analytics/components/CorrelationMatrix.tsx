@@ -21,6 +21,10 @@ interface CorrelationMatrixProps {
   title?: string;
   showSignificance?: boolean;
   colorScheme?: 'diverging' | 'sequential';
+  /** Names of variables that are medications (for filtering) */
+  medicationNames?: string[];
+  /** Filter mode: 'all' shows everything, 'medication-only' shows only med↔metric pairs */
+  filterMode?: 'all' | 'medication-only';
 }
 
 const getVariableIcon = (varName: string) => {
@@ -70,7 +74,9 @@ export default function CorrelationMatrix({
   className,
   title = 'Matriz de Correlações',
   showSignificance = true,
-  colorScheme = 'diverging'
+  colorScheme = 'diverging',
+  medicationNames = [],
+  filterMode = 'all'
 }: CorrelationMatrixProps) {
   const [selectedCell, setSelectedCell] = useState<{ i: number; j: number } | null>(null);
   const [hoveredCell, setHoveredCell] = useState<{ i: number; j: number } | null>(null);
@@ -81,6 +87,27 @@ export default function CorrelationMatrix({
   }, [data]);
 
   const { variables, correlationMatrix, pValueMatrix, significantPairs } = correlationResults;
+
+  // Mood metrics list (non-medication variables)
+  const moodMetrics = ['humor', 'ansiedade', 'energia', 'foco', 'cognicao', 'attShift'];
+  const medNamesSet = useMemo(() => new Set(medicationNames), [medicationNames]);
+
+  // Helper to check if a pair should be shown based on filter mode
+  const shouldShowPair = (var1: string, var2: string): boolean => {
+    if (filterMode === 'all') return true;
+    // medication-only: one must be medication, other must be mood metric
+    const isMed1 = medNamesSet.has(var1);
+    const isMed2 = medNamesSet.has(var2);
+    const isMetric1 = moodMetrics.includes(var1);
+    const isMetric2 = moodMetrics.includes(var2);
+    return (isMed1 && isMetric2) || (isMetric1 && isMed2);
+  };
+
+  // Filter significant pairs based on filter mode
+  const filteredSignificantPairs = useMemo(() => {
+    if (filterMode === 'all') return significantPairs;
+    return significantPairs.filter(pair => shouldShowPair(pair.var1, pair.var2));
+  }, [significantPairs, filterMode, medNamesSet]);
 
   const formatValue = (value: number) => {
     if (Math.abs(value) === 1) return value > 0 ? '1.00' : '-1.00';
@@ -182,6 +209,25 @@ export default function CorrelationMatrix({
                     const isSelected = selectedCell?.i === i && selectedCell?.j === j;
                     const isHovered = hoveredCell?.i === i && hoveredCell?.j === j;
                     const isDiagonal = i === j;
+                    const isVisiblePair = filterMode === 'all' || shouldShowPair(rowVar, colVar);
+
+                    if (!isDiagonal && !isVisiblePair) {
+                      return (
+                        <div
+                          key={j}
+                          className={cn(
+                            "w-24 h-20 flex items-center justify-center rounded-md",
+                            "opacity-20 cursor-default"
+                          )}
+                          style={{
+                            backgroundColor: 'rgba(128, 128, 128, 0.05)',
+                            border: '1px solid rgba(255, 255, 255, 0.06)'
+                          }}
+                        >
+                          <span className="text-xs text-muted-foreground">—</span>
+                        </div>
+                      );
+                    }
                     
                     return (
                       <TooltipProvider key={j}>
@@ -289,14 +335,14 @@ export default function CorrelationMatrix({
           </div>
         </>
       ) : (
-        /* Vista em Lista - Pares Significativos */
+        /* Vista em Lista - Pares Significativos (filtered) */
         <div className="space-y-3">
-          {significantPairs.length > 0 ? (
+          {filteredSignificantPairs.length > 0 ? (
             <>
               <p className="text-sm text-muted-foreground mb-4">
-                {significantPairs.length} correlações significativas encontradas (p {'<'} 0.05)
+                {filteredSignificantPairs.length} correlações {filterMode === 'medication-only' ? 'medicamento↔métrica ' : ''}significativas encontradas (p {'<'} 0.05)
               </p>
-              {significantPairs.map((pair, index) => (
+              {filteredSignificantPairs.map((pair, index) => (
                 <GlassCard key={index} variant="default" className="p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">

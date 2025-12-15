@@ -36,6 +36,42 @@ type ChartMouseEvent = {
   activeCoordinate?: { x: number; y: number };
 };
 
+function computePaddedDomain(
+  values: Array<number | null | undefined>,
+  options?: {
+    clampMin?: number;
+    paddingRatio?: number;
+    minPaddingAbs?: number;
+    fallback?: [number, number];
+  }
+): [number, number] {
+  const {
+    clampMin = 0,
+    paddingRatio = 0.12,
+    minPaddingAbs = 0.1,
+    fallback = [0, 10],
+  } = options ?? {};
+
+  const finite = values.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+  if (finite.length === 0) return fallback;
+
+  const min = Math.min(...finite);
+  const max = Math.max(...finite);
+
+  const rawRange = max - min;
+  const scale = rawRange > 0 ? rawRange : Math.abs(max) || 1;
+  const padding = Math.max(scale * paddingRatio, minPaddingAbs);
+
+  const low = Math.max(clampMin, min - padding);
+  const high = max + padding;
+
+  if (!Number.isFinite(low) || !Number.isFinite(high) || low === high) {
+    return fallback;
+  }
+
+  return [low, high];
+}
+
 // Helper to extract numeric timestamp from chart event
 const getActiveTimestamp = (e: ChartMouseEvent): number | null => {
   if (!e || e.activeLabel === undefined || e.activeLabel === null) return null;
@@ -160,26 +196,6 @@ export default function MedicationConcentrationChart({
       });
   }, [moodEntries, startTime, endTime]);
 
-  // Calculate Y-axis domain for concentration
-  const concentrationDomain = useMemo(() => {
-    const allValues: number[] = [];
-
-    chartData.forEach(point => {
-      if (point.concentration !== null && point.concentration !== undefined && point.concentration > 0) {
-        allValues.push(point.concentration);
-      }
-    });
-
-    if (allValues.length === 0) return [0, 10];
-
-    const min = Math.min(...allValues);
-    const max = Math.max(...allValues);
-    const range = max - min;
-    const padding = range * 0.15 || Math.max(max * 0.15, 5);
-
-    return [Math.max(0, min - padding), max + padding];
-  }, [chartData]);
-
   const therapeuticRangeNgMl = useMemo(() => {
     if (!medication.therapeuticRange) return null;
     const unit = medication.therapeuticRange.unit?.toLowerCase() ?? 'ng/ml';
@@ -194,6 +210,28 @@ export default function MedicationConcentrationChart({
       max: toNg(medication.therapeuticRange.max)
     };
   }, [medication.therapeuticRange]);
+
+  // Calculate Y-axis domain for concentration (include therapeutic range so it doesn't get clipped)
+  const concentrationDomain = useMemo(() => {
+    const values: Array<number | null | undefined> = [];
+
+    for (const point of chartData) {
+      if (point.concentration !== null && point.concentration !== undefined && point.concentration > 0) {
+        values.push(point.concentration);
+      }
+    }
+
+    if (therapeuticRangeNgMl) {
+      values.push(therapeuticRangeNgMl.min, therapeuticRangeNgMl.max);
+    }
+
+    return computePaddedDomain(values, {
+      clampMin: 0,
+      paddingRatio: 0.12,
+      minPaddingAbs: 0.1,
+      fallback: [0, 10],
+    });
+  }, [chartData, therapeuticRangeNgMl]);
 
   const exportChart = useCallback(() => {
     if (!chartRef.current) return;

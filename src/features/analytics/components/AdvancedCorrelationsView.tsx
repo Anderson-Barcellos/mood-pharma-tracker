@@ -17,11 +17,19 @@ import {
 import { cn } from '@/shared/utils';
 import type { Medication, MedicationDose, MoodEntry } from '@/shared/types';
 import { StatisticsEngine } from '@/features/analytics/utils/statistics-engine';
-import { calculateConcentration } from '@/features/analytics/utils/pharmacokinetics';
+import { ToggleGroup, ToggleGroupItem } from '@/shared/ui/toggle-group';
+import {
+  computeTrendFromSamples,
+  getTrendWindowMs,
+  sampleConcentrationAtTimes,
+  type ConcentrationSeriesMode,
+} from '@/features/analytics/utils/concentration-series';
 import CorrelationMatrix from './CorrelationMatrix';
 import LagCorrelationChart from './LagCorrelationChart';
 import OptimalDosingRecommendation from './OptimalDosingRecommendation';
-import { TimeframeSelector, type TimeframePeriod, getTimeframeDays } from '@/shared/components/TimeframeSelector';
+import ImpactAnalysisTab from './ImpactAnalysisTab';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 interface AdvancedCorrelationsViewProps {
   medications: Medication[];
@@ -37,81 +45,141 @@ export default function AdvancedCorrelationsView({
   className
 }: AdvancedCorrelationsViewProps) {
   const [selectedMedications, setSelectedMedications] = useState<string[]>([]);
-  const [timeframe, setTimeframe] = useState<TimeframePeriod>('7d');
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('impact');
+  const [concentrationMode, setConcentrationMode] = useState<ConcentrationSeriesMode>('trend');
+  const [matrixLagHours, setMatrixLagHours] = useState<0 | 24 | 48>(0);
 
-  const dayRange = getTimeframeDays(timeframe) ?? 7;
-  const endTime = Date.now();
-  const startTime = endTime - (dayRange * 24 * 60 * 60 * 1000);
-
-  const filteredMoodEntries = useMemo(() => 
-    moodEntries.filter(entry => entry.timestamp >= startTime && entry.timestamp <= endTime),
-    [moodEntries, startTime, endTime]
-  );
-
-  const filteredDoses = useMemo(() => 
-    doses.filter(dose => dose.timestamp >= startTime && dose.timestamp <= endTime),
-    [doses, startTime, endTime]
-  );
-
-  const correlationData = useMemo(() => {
-    const hourlyData = new Map<number, Record<string, number>>();
+  const { dataRange, dayRange } = useMemo(() => {
+    const allTimestamps = [
+      ...moodEntries.map(m => m.timestamp),
+      ...doses.map(d => d.timestamp)
+    ].filter(t => t > 0);
     
-    filteredMoodEntries.forEach(entry => {
-      const hourKey = Math.floor(entry.timestamp / 3600000) * 3600000;
-      if (!hourlyData.has(hourKey)) {
-        hourlyData.set(hourKey, {});
-      }
-      const hour = hourlyData.get(hourKey)!;
-      hour.humor = entry.moodScore;
-      if (entry.anxietyLevel !== undefined) hour.ansiedade = entry.anxietyLevel;
-      if (entry.energyLevel !== undefined) hour.energia = entry.energyLevel;
-      if (entry.focusLevel !== undefined) hour.foco = entry.focusLevel;
-      if (entry.cognitiveScore !== undefined) hour.cognicao = entry.cognitiveScore;
-      if (entry.attentionShift !== undefined) hour.attShift = entry.attentionShift;
-    });
-    
-    const selectedMeds = selectedMedications.length > 0 
-      ? medications.filter(m => selectedMedications.includes(m.id))
-      : medications;
-    
-    selectedMeds.forEach(medication => {
-      const medDoses = filteredDoses.filter(d => d.medicationId === medication.id);
-      
-      hourlyData.forEach((hourData, timestamp) => {
-        const concentration = calculateConcentration(medication, medDoses, timestamp);
-        if (concentration > 0.01) {
-          hourData[medication.name] = concentration;
-        }
-      });
-    });
-    
-    const validHours = Array.from(hourlyData.entries())
-      .filter(([_, data]) => Object.keys(data).length > 1)
-      .sort((a, b) => a[0] - b[0]);
-    
-    const series: Record<string, number[]> = {};
-    
-    if (validHours.length > 0) {
-      const allKeys = new Set<string>();
-      validHours.forEach(([_, data]) => {
-        Object.keys(data).forEach(key => allKeys.add(key));
-      });
-      
-      allKeys.forEach(key => {
-        series[key] = validHours.map(([_, data]) => data[key] || 0);
-      });
-      
-      Object.keys(series).forEach(key => {
-        const nonZeroCount = series[key].filter(v => v !== 0).length;
-        if (nonZeroCount < series[key].length * 0.3) {
-          delete series[key];
-        }
-      });
+    if (allTimestamps.length === 0) {
+      return { dataRange: { start: Date.now(), end: Date.now() }, dayRange: 0 };
     }
     
+    const start = Math.min(...allTimestamps);
+    const end = Math.max(...allTimestamps);
+    const days = Math.ceil((end - start) / (24 * 60 * 60 * 1000));
+    
+    return {
+      dataRange: { start, end },
+      dayRange: Math.max(days, 1)
+    };
+  }, [moodEntries, doses]);
+
+  const windowRange = useMemo(() => {
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const end = dataRange.end;
+    const start = dataRange.start;
+    const windowStart = start;
+    const days = Math.ceil((end - windowStart) / DAY_MS);
+    return {
+      start: windowStart,
+      end,
+      days: Math.max(days, 1),
+    };
+  }, [dataRange.end, dataRange.start]);
+
+  const filteredMoodEntries = useMemo(() => {
+    return moodEntries.filter(e => e.timestamp >= windowRange.start && e.timestamp <= windowRange.end);
+  }, [moodEntries, windowRange.end, windowRange.start]);
+
+  const filteredDoses = useMemo(() => {
+    const HOUR_MS = 60 * 60 * 1000;
+    const maxLookbackMs = medications.reduce((max, med) => {
+      const lookbackMs = Math.max(7 * 24 * HOUR_MS, med.halfLife * 5 * HOUR_MS);
+      return Math.max(max, lookbackMs);
+    }, 0);
+
+    return doses.filter(d =>
+      d.timestamp <= windowRange.end &&
+      d.timestamp >= (windowRange.start - maxLookbackMs)
+    );
+  }, [doses, medications, windowRange.end, windowRange.start]);
+
+  const correlationData = useMemo(() => {
+    const series: Record<string, number[]> = {};
+    const HOUR_MS = 60 * 60 * 1000;
+    const startHour = Math.floor(windowRange.start / HOUR_MS) * HOUR_MS;
+    const endHour = Math.ceil(windowRange.end / HOUR_MS) * HOUR_MS;
+
+    if (!Number.isFinite(startHour) || !Number.isFinite(endHour) || endHour < startHour) {
+      return series;
+    }
+
+    const timestamps: number[] = [];
+    for (let t = startHour; t <= endHour; t += HOUR_MS) timestamps.push(t);
+
+    // Bucket mood metrics per hour (so we can average if multiple entries happen within the same hour).
+    const moodBuckets = new Map<number, Record<string, number[]>>();
+    const pushBucketValue = (hourKey: number, key: string, value: number | undefined) => {
+      if (value === undefined || !Number.isFinite(value)) return;
+      if (!moodBuckets.has(hourKey)) moodBuckets.set(hourKey, {});
+      const bucket = moodBuckets.get(hourKey)!;
+      if (!bucket[key]) bucket[key] = [];
+      bucket[key].push(value);
+    };
+
+    for (const entry of filteredMoodEntries) {
+      const hourKey = Math.floor(entry.timestamp / HOUR_MS) * HOUR_MS;
+      pushBucketValue(hourKey, 'humor', entry.moodScore);
+      pushBucketValue(hourKey, 'ansiedade', entry.anxietyLevel);
+      pushBucketValue(hourKey, 'energia', entry.energyLevel);
+      pushBucketValue(hourKey, 'foco', entry.focusLevel);
+      pushBucketValue(hourKey, 'cognicao', entry.cognitiveScore);
+      pushBucketValue(hourKey, 'attShift', entry.attentionShift);
+    }
+
+    const moodKeys = ['humor', 'ansiedade', 'energia', 'foco', 'cognicao', 'attShift'] as const;
+
+    for (const key of moodKeys) {
+      series[key] = timestamps.map((t) => {
+        const values = moodBuckets.get(t)?.[key];
+        if (!values || values.length === 0) return Number.NaN;
+        return values.reduce((a, b) => a + b, 0) / values.length;
+      });
+    }
+
+    const selectedMeds = selectedMedications.length > 0
+      ? medications.filter(m => selectedMedications.includes(m.id))
+      : medications;
+
+    for (const medication of selectedMeds) {
+      const medDoses = filteredDoses.filter(d => d.medicationId === medication.id);
+      if (medDoses.length < 2) continue;
+
+      const raw = sampleConcentrationAtTimes(medication, medDoses, timestamps, 70);
+      const values = concentrationMode === 'trend'
+        ? computeTrendFromSamples(timestamps, raw, getTrendWindowMs(medication), 3)
+        : raw;
+
+      series[medication.name] = values.map((v) => {
+        if (typeof v === 'number' && Number.isFinite(v)) return v;
+        // "instant": null means "very low/near zero concentration".
+        // "trend": null means "not enough points in the window" (keep as NaN).
+        return concentrationMode === 'trend' ? Number.NaN : 0;
+      });
+    }
+
+    // Drop mood metrics with too few samples (but keep "humor" as the anchor).
+    Object.keys(series).forEach(key => {
+      if (key === 'humor') return;
+      if (series[key].every(v => !Number.isFinite(v))) {
+        delete series[key];
+        return;
+      }
+      if (moodKeys.includes(key as any)) {
+        const finiteCount = series[key].filter(Number.isFinite).length;
+        if (finiteCount < 5) {
+          delete series[key];
+        }
+      }
+    });
+
     return series;
-  }, [filteredMoodEntries, filteredDoses, medications, selectedMedications]);
+  }, [filteredMoodEntries, filteredDoses, medications, selectedMedications, concentrationMode, windowRange.end, windowRange.start]);
 
   const moodMetrics = ['humor', 'ansiedade', 'energia', 'foco', 'cognicao', 'attShift'] as const;
   type MoodMetric = typeof moodMetrics[number];
@@ -130,15 +198,15 @@ export default function AdvancedCorrelationsView({
       return null;
     }
 
-    const moodStats = StatisticsEngine.descriptiveStats(correlationData.humor);
+    const moodStats = StatisticsEngine.descriptiveStats(correlationData.humor.filter(Number.isFinite));
     
     const metricStats: Partial<Record<MoodMetric, { mean: number; stdDev: number; count: number }>> = {};
     moodMetrics.forEach(metric => {
       if (correlationData[metric] && correlationData[metric].length > 0) {
-        const nonZeroValues = correlationData[metric].filter(v => v > 0);
-        if (nonZeroValues.length > 3) {
-          const stats = StatisticsEngine.descriptiveStats(nonZeroValues);
-          metricStats[metric] = { mean: stats.mean, stdDev: stats.stdDev, count: nonZeroValues.length };
+        const values = correlationData[metric].filter(Number.isFinite);
+        if (values.length > 3) {
+          const stats = StatisticsEngine.descriptiveStats(values);
+          metricStats[metric] = { mean: stats.mean, stdDev: stats.stdDev, count: values.length };
         }
       }
     });
@@ -169,6 +237,25 @@ export default function AdvancedCorrelationsView({
       dataPoints: correlationData.humor?.length || 0
     };
   }, [correlationData, medications]);
+
+  const matrixData = useMemo(() => {
+    if (matrixLagHours === 0) return correlationData;
+
+    const shift = matrixLagHours;
+    const shiftSeries = (arr: number[], lag: number): number[] => {
+      const out = new Array(arr.length).fill(Number.NaN);
+      for (let i = 0; i + lag < arr.length; i++) {
+        out[i] = arr[i + lag];
+      }
+      return out;
+    };
+
+    const shifted: Record<string, number[]> = {};
+    for (const [key, values] of Object.entries(correlationData)) {
+      shifted[key] = moodMetrics.includes(key as any) ? shiftSeries(values, shift) : values;
+    }
+    return shifted;
+  }, [correlationData, matrixLagHours, moodMetrics]);
 
   const insights = useMemo(() => {
     const result: string[] = [];
@@ -223,10 +310,29 @@ export default function AdvancedCorrelationsView({
             </div>
           </div>
           
-          <TimeframeSelector
-            value={timeframe}
-            onChange={setTimeframe}
-          />
+          <div className="flex flex-col items-end gap-2">
+            <div className="text-sm text-muted-foreground text-right">
+              <span className="font-medium">{windowRange.days} dias</span> de dados
+              <br />
+              <span className="text-xs">
+                {format(windowRange.start, 'dd MMM', { locale: ptBR })} - {format(windowRange.end, 'dd MMM', { locale: ptBR })}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Concentração</span>
+              <ToggleGroup
+                type="single"
+                variant="outline"
+                size="sm"
+                value={concentrationMode}
+                onValueChange={(v) => v && setConcentrationMode(v as ConcentrationSeriesMode)}
+              >
+                <ToggleGroupItem value="instant">Cp</ToggleGroupItem>
+                <ToggleGroupItem value="trend">Tendência</ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+          </div>
         </div>
       </GlassCard>
 
@@ -267,25 +373,12 @@ export default function AdvancedCorrelationsView({
         </div>
       )}
 
-      {insights.length > 0 && (
-        <GlassCard className="p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Lightning className="w-5 h-5 text-yellow-500" />
-            <h3 className="text-lg font-semibold">Insights</h3>
-          </div>
-          <div className="space-y-2">
-            {insights.map((insight, index) => (
-              <div key={index} className="flex items-start gap-2">
-                <span className="text-sm">{insight}</span>
-              </div>
-            ))}
-          </div>
-        </GlassCard>
-      )}
-
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="overview">Visao Geral</TabsTrigger>
+          <TabsTrigger value="impact" className="flex items-center gap-1">
+            <TrendUp className="w-3 h-3" />
+            <span className="hidden sm:inline">Impacto</span>
+          </TabsTrigger>
           <TabsTrigger value="timing" className="flex items-center gap-1">
             <Target className="w-3 h-3" />
             <span className="hidden sm:inline">Horarios</span>
@@ -297,108 +390,19 @@ export default function AdvancedCorrelationsView({
           <TabsTrigger value="matrix">Matriz</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="space-y-6">
-          {Object.keys(statistics?.medicationCorrelations || {}).length > 0 ? (
-            <GlassCard className="p-6">
-              <h3 className="text-lg font-semibold mb-4">Correlações Medicamento → Métricas</h3>
-              <div className="space-y-6">
-                {Object.entries(statistics?.medicationCorrelations || {}).map(([medName, correlations]) => (
-                  <div key={medName} className="p-4 rounded-lg bg-muted/30">
-                    <div className="flex items-center gap-3 mb-3">
-                      <Pill className="w-5 h-5 text-teal-500" />
-                      <span className="font-semibold text-lg">{medName}</span>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {correlations.humor && (
-                        <div className="flex items-center justify-between p-2 rounded bg-purple-500/10">
-                          <span className="text-xs flex items-center gap-1">
-                            <Brain className="w-3 h-3 text-purple-500" />
-                            Humor
-                          </span>
-                          <span className={cn("text-xs font-bold", correlations.humor.value > 0 ? "text-green-500" : "text-red-500")}>
-                            {correlations.humor.value.toFixed(2)}
-                          </span>
-                        </div>
-                      )}
-                      {correlations.ansiedade && (
-                        <div className="flex items-center justify-between p-2 rounded bg-rose-500/10">
-                          <span className="text-xs flex items-center gap-1">
-                            <Drop className="w-3 h-3 text-rose-500" />
-                            Ansiedade
-                          </span>
-                          <span className={cn("text-xs font-bold", correlations.ansiedade.value < 0 ? "text-green-500" : "text-red-500")}>
-                            {correlations.ansiedade.value.toFixed(2)}
-                          </span>
-                        </div>
-                      )}
-                      {correlations.energia && (
-                        <div className="flex items-center justify-between p-2 rounded bg-amber-500/10">
-                          <span className="text-xs flex items-center gap-1">
-                            <Lightning className="w-3 h-3 text-amber-500" />
-                            Energia
-                          </span>
-                          <span className={cn("text-xs font-bold", correlations.energia.value > 0 ? "text-green-500" : "text-red-500")}>
-                            {correlations.energia.value.toFixed(2)}
-                          </span>
-                        </div>
-                      )}
-                      {correlations.foco && (
-                        <div className="flex items-center justify-between p-2 rounded bg-blue-500/10">
-                          <span className="text-xs flex items-center gap-1">
-                            <Target className="w-3 h-3 text-blue-500" />
-                            Foco
-                          </span>
-                          <span className={cn("text-xs font-bold", correlations.foco.value > 0 ? "text-green-500" : "text-red-500")}>
-                            {correlations.foco.value.toFixed(2)}
-                          </span>
-                        </div>
-                      )}
-                      {correlations.cognicao && (
-                        <div className="flex items-center justify-between p-2 rounded bg-violet-500/10">
-                          <span className="text-xs flex items-center gap-1">
-                            <Brain className="w-3 h-3 text-violet-500" />
-                            Cognição
-                          </span>
-                          <span className={cn("text-xs font-bold", correlations.cognicao.value > 0 ? "text-green-500" : "text-red-500")}>
-                            {correlations.cognicao.value.toFixed(2)}
-                          </span>
-                        </div>
-                      )}
-                      {correlations.attShift && (
-                        <div className="flex items-center justify-between p-2 rounded bg-cyan-500/10">
-                          <span className="text-xs flex items-center gap-1">
-                            <ArrowsLeftRight className="w-3 h-3 text-cyan-500" />
-                            Att.Shift
-                          </span>
-                          <span className={cn("text-xs font-bold", correlations.attShift.value > 0 ? "text-green-500" : "text-red-500")}>
-                            {correlations.attShift.value.toFixed(2)}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-4">
-                Valores positivos = correlação direta. Para ansiedade, valor negativo é desejável (medicamento reduz ansiedade).
-              </p>
-            </GlassCard>
-          ) : (
-            <GlassCard className="p-12 text-center">
-              <Info className="w-16 h-16 mx-auto mb-4 text-muted-foreground opacity-50" />
-              <h3 className="text-lg font-medium mb-2">Dados Insuficientes</h3>
-              <p className="text-muted-foreground">
-                Registre mais dados de humor e doses para visualizar correlações.
-              </p>
-            </GlassCard>
-          )}
+        <TabsContent value="impact" className="space-y-6 mt-6">
+          <ImpactAnalysisTab
+            medications={medications}
+            doses={filteredDoses}
+            moodEntries={filteredMoodEntries}
+          />
         </TabsContent>
 
         <TabsContent value="timing" className="space-y-6 mt-6">
           <OptimalDosingRecommendation
             medications={medications}
-            doses={doses}
-            moodEntries={moodEntries}
+            doses={filteredDoses}
+            moodEntries={filteredMoodEntries}
           />
         </TabsContent>
 
@@ -423,9 +427,9 @@ export default function AdvancedCorrelationsView({
                 </h4>
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {medications.map(med => {
-                    const medDoses = doses.filter(d => d.medicationId === med.id);
+                    const medDoses = filteredDoses.filter(d => d.medicationId === med.id);
                     const hasEnoughDoses = medDoses.length >= 3;
-                    const hasEnoughMoods = moodEntries.length >= 5;
+                    const hasEnoughMoods = filteredMoodEntries.length >= 5;
                     const isReady = hasEnoughDoses && hasEnoughMoods;
 
                     return (
@@ -451,7 +455,7 @@ export default function AdvancedCorrelationsView({
                   })}
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-2">
-                  Total mood entries: {moodEntries.length}/5 {moodEntries.length >= 5 ? '✓' : '(precisa de mais)'}
+                  Total mood entries: {filteredMoodEntries.length}/5 {filteredMoodEntries.length >= 5 ? '✓' : '(precisa de mais)'}
                 </p>
               </GlassCard>
 
@@ -459,8 +463,8 @@ export default function AdvancedCorrelationsView({
                 <LagCorrelationChart
                   key={medication.id}
                   medication={medication}
-                  doses={doses}
-                  moodEntries={moodEntries}
+                  doses={filteredDoses}
+                  moodEntries={filteredMoodEntries}
                   maxLagHours={Math.min(12, Math.ceil(medication.halfLife * 2))}
                 />
               ))}
@@ -478,11 +482,43 @@ export default function AdvancedCorrelationsView({
 
         <TabsContent value="matrix" className="space-y-6">
           {Object.keys(correlationData).length > 1 ? (
-            <CorrelationMatrix
-              data={correlationData}
-              title="Matriz de Correlacoes"
-              showSignificance={true}
-            />
+            <>
+              <GlassCard className="p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4" />
+                      <span>
+                        Lag: <span className="font-medium">{matrixLagHours === 0 ? '0h' : `+${matrixLagHours}h`}</span>
+                      </span>
+                    </div>
+                    <p className="text-xs mt-1">
+                      Lag positivo = métrica de humor avaliada depois da exposição/concentração.
+                      (Ex: +24h = “humor amanhã”)
+                    </p>
+                  </div>
+                  <ToggleGroup
+                    type="single"
+                    variant="outline"
+                    size="sm"
+                    value={String(matrixLagHours)}
+                    onValueChange={(v) => v && setMatrixLagHours(Number(v) as 0 | 24 | 48)}
+                  >
+                    <ToggleGroupItem value="0">0h</ToggleGroupItem>
+                    <ToggleGroupItem value="24">24h</ToggleGroupItem>
+                    <ToggleGroupItem value="48">48h</ToggleGroupItem>
+                  </ToggleGroup>
+                </div>
+              </GlassCard>
+
+              <CorrelationMatrix
+                data={matrixData}
+                title="Correlações Medicamento ↔ Métricas"
+                showSignificance={true}
+                medicationNames={medications.map(m => m.name)}
+                filterMode="medication-only"
+              />
+            </>
           ) : (
             <GlassCard className="p-12 text-center">
               <Info className="w-16 h-16 mx-auto mb-4 text-muted-foreground opacity-50" />

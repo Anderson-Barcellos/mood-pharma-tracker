@@ -9,7 +9,7 @@ import { Label } from '@/shared/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select';
 import { Textarea } from '@/shared/ui/textarea';
 import { Badge } from '@/shared/ui/badge';
-import { Plus, Pill, Pencil, Trash, ClockCounterClockwise, Lightning } from '@phosphor-icons/react';
+import { Plus, Pill, Pencil, Trash, ClockCounterClockwise, Lightning, Clock } from '@phosphor-icons/react';
 import type { Medication, MedicationCategory, MedicationDose } from '@/shared/types';
 import MedicationDosesView from '@/features/doses/components/MedicationDosesView';
 import { getMedicationPresets } from '@/shared/constants/medication-presets';
@@ -43,6 +43,7 @@ export default function MedicationsView() {
     volumeOfDistribution: '',
     bioavailability: '',
     absorptionRate: '',
+    scheduledTime: '',
     notes: ''
   });
 
@@ -55,6 +56,7 @@ export default function MedicationsView() {
       volumeOfDistribution: '',
       bioavailability: '',
       absorptionRate: '',
+      scheduledTime: '',
       notes: ''
     });
     setEditingMed(null);
@@ -72,6 +74,7 @@ export default function MedicationsView() {
         volumeOfDistribution: preset.volumeOfDistribution.toString(),
         bioavailability: preset.bioavailability.toString(),
         absorptionRate: preset.absorptionRate.toString(),
+        scheduledTime: '',
         notes: preset.notes || ''
       });
     }
@@ -92,6 +95,7 @@ export default function MedicationsView() {
       volumeOfDistribution: med.volumeOfDistribution.toString(),
       bioavailability: med.bioavailability.toString(),
       absorptionRate: med.absorptionRate.toString(),
+      scheduledTime: med.scheduledTime || '',
       notes: med.notes || ''
     });
     setDialogOpen(true);
@@ -106,6 +110,7 @@ export default function MedicationsView() {
       volumeOfDistribution: parseFloat(formData.volumeOfDistribution),
       bioavailability: parseFloat(formData.bioavailability),
       absorptionRate: parseFloat(formData.absorptionRate),
+      scheduledTime: formData.scheduledTime || undefined,
       notes: formData.notes || undefined
     };
 
@@ -268,6 +273,24 @@ export default function MedicationsView() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="scheduledTime" className="flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5" />
+                    Horário Padrão
+                  </Label>
+                  <Input
+                    id="scheduledTime"
+                    type="time"
+                    value={formData.scheduledTime}
+                    onChange={(e) => setFormData({ ...formData, scheduledTime: e.target.value })}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Horário habitual de tomada (ex: 09:00)
+                  </p>
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="notes">Notes</Label>
                 <Textarea
@@ -350,6 +373,14 @@ export default function MedicationsView() {
                       <span className="text-muted-foreground">Absorption:</span>
                       <span className="font-medium">{med.absorptionRate ? `${med.absorptionRate}/h` : '—'}</span>
                     </div>
+                    {med.scheduledTime && (
+                      <div className="flex justify-between items-center pt-2 border-t">
+                        <span className="text-muted-foreground flex items-center gap-1">
+                          <Clock className="w-3 h-3" /> Horário:
+                        </span>
+                        <span className="font-medium text-primary">{med.scheduledTime}</span>
+                      </div>
+                    )}
                   </div>
                   {!hasPkParams && (
                     <div className="mt-3 pt-3 border-t">

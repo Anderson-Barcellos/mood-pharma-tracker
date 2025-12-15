@@ -20,6 +20,15 @@ export interface Medication {
   therapeuticRangeMin?: number; // Alternative therapeutic range format
   therapeuticRangeMax?: number;
   therapeuticRangeUnit?: string;
+  effectParameters?: {
+    ke0: number; // Effect compartment equilibration rate constant (1/hours)
+    effectLag?: number; // Fixed lag before effect starts (hours)
+    effectType: 'direct' | 'effect-compartment' | 'chronic';
+  };
+  isNewlyStarted?: boolean; // True if user recently started this medication
+  startDate?: number; // Timestamp when user started this medication
+  scheduledTime?: string; // Default time to take medication (HH:mm format, e.g., "09:00")
+  scheduledDays?: ('mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun')[]; // Days when medication should be taken
   notes?: string;
   createdAt: number;
   updatedAt: number;

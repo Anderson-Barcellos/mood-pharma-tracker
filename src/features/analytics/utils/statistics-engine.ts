@@ -37,27 +37,45 @@ export interface MultiVariableCorrelation {
 }
 
 export class StatisticsEngine {
+  private static finitePairs(x: number[], y: number[]): { xs: number[]; ys: number[] } {
+    const len = Math.min(x.length, y.length);
+    const xs: number[] = [];
+    const ys: number[] = [];
+
+    for (let i = 0; i < len; i++) {
+      const xi = x[i];
+      const yi = y[i];
+      if (Number.isFinite(xi) && Number.isFinite(yi)) {
+        xs.push(xi);
+        ys.push(yi);
+      }
+    }
+
+    return { xs, ys };
+  }
+
   /**
    * Calcula correlação de Pearson entre duas séries
    */
   static pearsonCorrelation(x: number[], y: number[]): CorrelationResult {
-    if (x.length !== y.length || x.length < 3) {
+    const { xs, ys } = this.finitePairs(x, y);
+    if (xs.length < 3) {
       return {
         value: 0,
         pValue: 1,
         confidence: 0,
         significance: 'none',
-        sampleSize: x.length,
+        sampleSize: xs.length,
         method: 'pearson'
       };
     }
 
-    const n = x.length;
-    const sumX = x.reduce((a, b) => a + b, 0);
-    const sumY = y.reduce((a, b) => a + b, 0);
-    const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
-    const sumX2 = x.reduce((sum, xi) => sum + xi * xi, 0);
-    const sumY2 = y.reduce((sum, yi) => sum + yi * yi, 0);
+    const n = xs.length;
+    const sumX = xs.reduce((a, b) => a + b, 0);
+    const sumY = ys.reduce((a, b) => a + b, 0);
+    const sumXY = xs.reduce((sum, xi, i) => sum + xi * ys[i], 0);
+    const sumX2 = xs.reduce((sum, xi) => sum + xi * xi, 0);
+    const sumY2 = ys.reduce((sum, yi) => sum + yi * yi, 0);
 
     const numerator = n * sumXY - sumX * sumY;
     const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
@@ -88,7 +106,7 @@ export class StatisticsEngine {
     else if (pValue < 0.05) significance = 'low';
 
     // Calcula intervalo de confiança 95%
-    const confidence = 1.96 / Math.sqrt(n - 3);
+    const confidence = n > 3 ? 1.96 / Math.sqrt(n - 3) : 0;
 
     return {
       value: r,
@@ -104,20 +122,21 @@ export class StatisticsEngine {
    * Calcula correlação de Spearman (rank-based)
    */
   static spearmanCorrelation(x: number[], y: number[]): CorrelationResult {
-    if (x.length !== y.length || x.length < 3) {
+    const { xs, ys } = this.finitePairs(x, y);
+    if (xs.length < 3) {
       return {
         value: 0,
         pValue: 1,
         confidence: 0,
         significance: 'none',
-        sampleSize: x.length,
+        sampleSize: xs.length,
         method: 'spearman'
       };
     }
 
     // Converte valores para ranks
-    const xRanks = this.rankData(x);
-    const yRanks = this.rankData(y);
+    const xRanks = this.rankData(xs);
+    const yRanks = this.rankData(ys);
 
     // Usa Pearson nos ranks
     const result = this.pearsonCorrelation(xRanks, yRanks);
@@ -542,7 +561,8 @@ export class StatisticsEngine {
     skewness: number;
     kurtosis: number;
   } {
-    const n = data.length;
+    const finiteData = data.filter(Number.isFinite);
+    const n = finiteData.length;
     if (n === 0) {
       return {
         mean: 0, median: 0, mode: 0, stdDev: 0, variance: 0,
@@ -550,10 +570,10 @@ export class StatisticsEngine {
       };
     }
 
-    const sorted = [...data].sort((a, b) => a - b);
+    const sorted = [...finiteData].sort((a, b) => a - b);
 
     // Média
-    const mean = data.reduce((a, b) => a + b, 0) / n;
+    const mean = finiteData.reduce((a, b) => a + b, 0) / n;
 
     // Mediana
     const median = n % 2 === 0
@@ -562,12 +582,12 @@ export class StatisticsEngine {
 
     // Moda (valor mais frequente)
     const frequency: Record<number, number> = {};
-    data.forEach(v => frequency[v] = (frequency[v] || 0) + 1);
+    finiteData.forEach(v => frequency[v] = (frequency[v] || 0) + 1);
     const mode = Number(Object.entries(frequency)
       .sort((a, b) => b[1] - a[1])[0]?.[0] || 0);
 
     // Variância e desvio padrão
-    const variance = data.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / n;
+    const variance = finiteData.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / n;
     const stdDev = Math.sqrt(variance);
 
     // Min e Max
@@ -580,17 +600,106 @@ export class StatisticsEngine {
 
     // Skewness (assimetria)
     const skewness = n > 2 && stdDev > 0
-      ? data.reduce((sum, v) => sum + Math.pow((v - mean) / stdDev, 3), 0) / n
+      ? finiteData.reduce((sum, v) => sum + Math.pow((v - mean) / stdDev, 3), 0) / n
       : 0;
 
     // Kurtosis (curtose)
     const kurtosis = n > 3 && stdDev > 0
-      ? data.reduce((sum, v) => sum + Math.pow((v - mean) / stdDev, 4), 0) / n - 3
+      ? finiteData.reduce((sum, v) => sum + Math.pow((v - mean) / stdDev, 4), 0) / n - 3
       : 0;
 
     return {
       mean, median, mode, stdDev, variance,
       min, max, q1, q3, skewness, kurtosis
+    };
+  }
+
+  /**
+   * Benjamini-Hochberg FDR Correction for multiple comparisons
+   * Returns adjusted p-values controlling False Discovery Rate
+   */
+  static benjaminiHochbergFDR(pValues: number[], alpha: number = 0.05): {
+    adjustedPValues: number[];
+    significantIndices: number[];
+    fdrThreshold: number;
+  } {
+    const n = pValues.length;
+    if (n === 0) {
+      return { adjustedPValues: [], significantIndices: [], fdrThreshold: 0 };
+    }
+
+    const indexed = pValues.map((p, i) => ({ p, originalIndex: i }));
+    indexed.sort((a, b) => a.p - b.p);
+
+    const adjustedPValues = new Array<number>(n);
+    let minAdjusted = 1;
+
+    for (let i = n - 1; i >= 0; i--) {
+      const rank = i + 1;
+      const adjusted = Math.min(minAdjusted, (indexed[i].p * n) / rank);
+      adjustedPValues[indexed[i].originalIndex] = Math.min(1, adjusted);
+      minAdjusted = adjusted;
+    }
+
+    let fdrThreshold = 0;
+    const significantIndices: number[] = [];
+
+    for (let i = 0; i < n; i++) {
+      const rank = i + 1;
+      const criticalValue = (rank / n) * alpha;
+      if (indexed[i].p <= criticalValue) {
+        fdrThreshold = indexed[i].p;
+        significantIndices.push(indexed[i].originalIndex);
+      }
+    }
+
+    return { adjustedPValues, significantIndices, fdrThreshold };
+  }
+
+  /**
+   * Two-sample t-test for comparing means of two groups
+   */
+  static twoSampleTTest(group1: number[], group2: number[]): {
+    tStatistic: number;
+    pValue: number;
+    meanDifference: number;
+    effectSize: number;
+    significant: boolean;
+  } {
+    const n1 = group1.filter(Number.isFinite).length;
+    const n2 = group2.filter(Number.isFinite).length;
+
+    if (n1 < 2 || n2 < 2) {
+      return { tStatistic: 0, pValue: 1, meanDifference: 0, effectSize: 0, significant: false };
+    }
+
+    const mean1 = group1.reduce((a, b) => a + b, 0) / n1;
+    const mean2 = group2.reduce((a, b) => a + b, 0) / n2;
+    const meanDifference = mean1 - mean2;
+
+    const var1 = group1.reduce((sum, x) => sum + Math.pow(x - mean1, 2), 0) / (n1 - 1);
+    const var2 = group2.reduce((sum, x) => sum + Math.pow(x - mean2, 2), 0) / (n2 - 1);
+
+    const pooledVar = ((n1 - 1) * var1 + (n2 - 1) * var2) / (n1 + n2 - 2);
+    const se = Math.sqrt(pooledVar * (1/n1 + 1/n2));
+
+    if (se === 0) {
+      return { tStatistic: 0, pValue: 1, meanDifference, effectSize: 0, significant: false };
+    }
+
+    const tStatistic = meanDifference / se;
+    const df = n1 + n2 - 2;
+    const pValue = this.calculatePValue(tStatistic, df);
+
+    const pooledSD = Math.sqrt(pooledVar);
+    const effectSize = pooledSD > 0 ? meanDifference / pooledSD : 0;
+
+    return {
+      tStatistic,
+      pValue,
+      meanDifference,
+      effectSize,
+      significant: pValue < 0.05
     };
   }
 

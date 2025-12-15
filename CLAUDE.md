@@ -36,6 +36,14 @@ Personal health tracking PWA for monitoring medication adherence, mood patterns,
 - Multi-metric correlations (mood, anxiety, energy, focus, cognition vs medications)
 - Temporal lag analysis
 - Pharmacokinetic concentration charting
+- **Correlations use ALL available data** (not limited by timeframe)
+
+### 6. Temporal Adherence Tracking
+- Scheduled medication times (`scheduledTime` field)
+- Adherence score calculation (0-100%)
+- Deviation analysis: on-time, late, early doses
+- Pattern detection: consistent, variable, irregular
+- Correlation between timing deviations and mood
 
 ---
 
@@ -287,6 +295,8 @@ interface Medication {
   bioavailability: number;       // 0-1
   absorptionRate: number;        // 1/hours
   therapeuticRange?: { min: number; max: number; unit: string };
+  scheduledTime?: string;        // Default time to take (HH:mm format, e.g., "09:00")
+  scheduledDays?: ('mon'|'tue'|'wed'|'thu'|'fri'|'sat'|'sun')[]; // Days to take
   color?: string;
   notes?: string;
   createdAt: number;
@@ -354,6 +364,40 @@ API_PORT=8113
 ---
 
 ## 🚀 Recent Major Changes
+
+### 2025-12-15: Concentration Variability Analysis + Statistical Improvements
+- ✅ **NEW: `analyzeConcentrationVariability()`** - Compares mood during stable vs variable concentration periods
+  - Uses CV (coefficient of variation) in 7-day rolling windows
+  - Two-sample t-test with effect size (Cohen's d)
+  - Answers: "Does mood improve when medication levels are stable or varying?"
+- ✅ **NEW: `analyzeOptimalDoseInterval()`** - Finds which dose intervals correlate with best mood
+  - Bins intervals (8-16h, 20-26h, etc.) and compares mood outcomes
+  - Correlation analysis between interval duration and mood
+- ✅ **NEW: Benjamini-Hochberg FDR correction** in statistics-engine.ts
+  - Controls false discovery rate for multiple comparisons
+  - Prevents ~46% false positive rate when testing 12+ correlations
+- ✅ **NEW: Two-sample t-test** in statistics-engine.ts for group comparisons
+- ✅ **NEW: Lamotrigine autoinduction** in pharmacokinetics.ts
+  - Reduces half-life by up to 20% after 21 days of use
+  - Prevents 20-30% overestimation of chronic Lamictal concentrations
+- ✅ **NEW: `ConcentrationStabilityCard.tsx`** component in Dashboard "Progress" tab
+  - Visual comparison of stable vs variable periods
+  - Mood difference with significance badges
+  - Optimal interval analysis per medication
+  - Personalized recommendations
+
+### 2025-12-14: Temporal Adherence + Full Data Correlations
+- ✅ **Correlations now use ALL data** - removed timeframe selector from AdvancedCorrelationsView
+- ✅ Added `scheduledTime` field to Medication type for default dosing time
+- ✅ Added time input in medication form to configure scheduled time
+- ✅ Created `calculateTemporalAdherence()` function in insights-generator.ts
+- ✅ New `TemporalAdherenceCard` component showing:
+  - Adherence score (0-100%) based on timing deviation
+  - On-time / late / early dose counts
+  - Pattern (consistent/variable/irregular)
+  - Trend (improving/stable/declining)
+  - Correlation between timing and mood
+- ✅ Integrated adherence card into Dashboard "Progress" tab
 
 ### 2025-12-10: Unified Mood Form + Extended Correlations
 - ✅ Created unified `MoodLogForm.tsx` component for all mood entry points
@@ -443,8 +487,9 @@ npm run process:health
 ### Utilities
 - `/src/features/health-data/utils/csv-parser.ts` - Samsung Health CSV parsing
 - `/src/features/analytics/utils/correlations.ts` - Statistical correlations
-- `/src/features/analytics/utils/statistics-engine.ts` - Stats calculations
-- `/src/features/analytics/utils/pharmacokinetics.ts` - PK modeling
+- `/src/features/analytics/utils/statistics-engine.ts` - Stats calculations + FDR + t-test
+- `/src/features/analytics/utils/pharmacokinetics.ts` - PK modeling + Lamotrigine autoinduction
+- `/src/features/analytics/utils/insights-generator.ts` - Insights + adherence + variability analysis
 
 ### Hooks
 - `/src/shared/hooks/use-mobile.ts` - Mobile detection
@@ -456,7 +501,9 @@ npm run process:health
 ### Main Components
 - `/src/features/analytics/components/Dashboard.tsx` - Main dashboard
 - `/src/features/analytics/components/PKChart.tsx` - Unified PK + Mood chart (use this!)
-- `/src/features/analytics/components/AdvancedCorrelationsView.tsx` - Advanced correlations
+- `/src/features/analytics/components/AdvancedCorrelationsView.tsx` - Advanced correlations (uses ALL data)
+- `/src/features/analytics/components/TemporalAdherenceCard.tsx` - Timing adherence analysis
+- `/src/features/analytics/components/ConcentrationStabilityCard.tsx` - Variability vs stability analysis
 - `/src/features/mood/components/MoodLogForm.tsx` - Unified mood entry form (use this!)
 - `/src/shared/layouts/AppLayout.tsx` - App shell
 
@@ -504,9 +551,9 @@ MedicationConcentrationChart.tsx  ← DEPRECATED (do not use)
 
 ---
 
-**Last Updated:** 2025-12-10
-**Project Status:** ✅ Build passing, 5 non-critical TS errors, Forms unified, Correlations expanded
-**Next Priority:** Cleanup console.logs, remove deprecated MedicationConcentrationChart
+**Last Updated:** 2025-12-15
+**Project Status:** ✅ Build passing (16.5s), 5 non-critical TS errors, Variability analysis + FDR implemented
+**Next Priority:** Apply FDR correction to existing insights, add therapeutic range alerts
 
 ---
 
