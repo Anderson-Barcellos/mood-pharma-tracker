@@ -44,6 +44,9 @@ export default function MedicationsView() {
     bioavailability: '',
     absorptionRate: '',
     scheduledTime: '',
+    therapeuticMin: '',
+    therapeuticMax: '',
+    therapeuticUnit: 'ng/mL',
     notes: ''
   });
 
@@ -57,6 +60,9 @@ export default function MedicationsView() {
       bioavailability: '',
       absorptionRate: '',
       scheduledTime: '',
+      therapeuticMin: '',
+      therapeuticMax: '',
+      therapeuticUnit: 'ng/mL',
       notes: ''
     });
     setEditingMed(null);
@@ -75,6 +81,9 @@ export default function MedicationsView() {
         bioavailability: preset.bioavailability.toString(),
         absorptionRate: preset.absorptionRate.toString(),
         scheduledTime: '',
+        therapeuticMin: preset.therapeuticRange?.min?.toString() || '',
+        therapeuticMax: preset.therapeuticRange?.max?.toString() || '',
+        therapeuticUnit: preset.therapeuticRange?.unit || 'ng/mL',
         notes: preset.notes || ''
       });
     }
@@ -96,12 +105,23 @@ export default function MedicationsView() {
       bioavailability: med.bioavailability.toString(),
       absorptionRate: med.absorptionRate.toString(),
       scheduledTime: med.scheduledTime || '',
+      therapeuticMin: med.therapeuticRange?.min?.toString() || '',
+      therapeuticMax: med.therapeuticRange?.max?.toString() || '',
+      therapeuticUnit: med.therapeuticRange?.unit || 'ng/mL',
       notes: med.notes || ''
     });
     setDialogOpen(true);
   };
 
   const handleSave = async () => {
+    const therapeuticRange = formData.therapeuticMin && formData.therapeuticMax
+      ? {
+          min: parseFloat(formData.therapeuticMin),
+          max: parseFloat(formData.therapeuticMax),
+          unit: formData.therapeuticUnit
+        }
+      : undefined;
+
     const medicationData = {
       name: formData.name,
       brandName: formData.brandName || undefined,
@@ -111,6 +131,7 @@ export default function MedicationsView() {
       bioavailability: parseFloat(formData.bioavailability),
       absorptionRate: parseFloat(formData.absorptionRate),
       scheduledTime: formData.scheduledTime || undefined,
+      therapeuticRange,
       notes: formData.notes || undefined
     };
 
@@ -289,6 +310,51 @@ export default function MedicationsView() {
                     Horário habitual de tomada (ex: 09:00)
                   </p>
                 </div>
+              </div>
+
+              <div className="p-3 rounded-lg bg-green-500/5 border border-green-500/20">
+                <Label className="text-sm font-medium mb-3 block">Faixa Terapêutica (opcional)</Label>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="therapeuticMin" className="text-xs">Mínimo</Label>
+                    <Input
+                      id="therapeuticMin"
+                      type="number"
+                      step="0.1"
+                      value={formData.therapeuticMin}
+                      onChange={(e) => setFormData({ ...formData, therapeuticMin: e.target.value })}
+                      placeholder="ex: 50"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="therapeuticMax" className="text-xs">Máximo</Label>
+                    <Input
+                      id="therapeuticMax"
+                      type="number"
+                      step="0.1"
+                      value={formData.therapeuticMax}
+                      onChange={(e) => setFormData({ ...formData, therapeuticMax: e.target.value })}
+                      placeholder="ex: 125"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="therapeuticUnit" className="text-xs">Unidade</Label>
+                    <Select value={formData.therapeuticUnit} onValueChange={(value) => setFormData({ ...formData, therapeuticUnit: value })}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ng/mL">ng/mL</SelectItem>
+                        <SelectItem value="mcg/mL">mcg/mL</SelectItem>
+                        <SelectItem value="mg/L">mg/L</SelectItem>
+                        <SelectItem value="mmol/L">mmol/L</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Concentração sérica ideal para eficácia. Aparece como faixa verde no gráfico PK.
+                </p>
               </div>
 
               <div className="space-y-2">

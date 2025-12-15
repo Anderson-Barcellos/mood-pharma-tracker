@@ -3,7 +3,7 @@
  * Progressive Web App with offline support
  */
 
-const CACHE_VERSION = 'v1.1.0';
+const CACHE_VERSION = 'v1.2.0';
 const CACHE_NAME = `moodpharma-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `moodpharma-runtime-${CACHE_VERSION}`;
 const DATA_CACHE = `moodpharma-data-${CACHE_VERSION}`;
